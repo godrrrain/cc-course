@@ -142,9 +142,6 @@ type KumirParserVisitor interface {
 	// Visit a parse tree produced by KumirParser#exitStatement.
 	VisitExitStatement(ctx *ExitStatementContext) interface{}
 
-	// Visit a parse tree produced by KumirParser#stopStatement.
-	VisitStopStatement(ctx *StopStatementContext) interface{}
-
 	// Visit a parse tree produced by KumirParser#statement.
 	VisitStatement(ctx *StatementContext) interface{}
 

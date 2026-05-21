@@ -2,6 +2,7 @@ package visitor
 
 import (
 	"fmt"
+
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/value"
@@ -30,8 +31,6 @@ func (v *IRVisitor) VisitStatement(ctx *parser.StatementContext) interface{} {
 		v.Visit(ctx.LoopStatement())
 	case ctx.ExitStatement() != nil:
 		v.Visit(ctx.ExitStatement())
-	case ctx.StopStatement() != nil:
-		v.Visit(ctx.StopStatement())
 	default:
 		return nil
 	}

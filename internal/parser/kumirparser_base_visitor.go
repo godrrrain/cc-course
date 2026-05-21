@@ -187,10 +187,6 @@ func (v *BaseKumirParserVisitor) VisitExitStatement(ctx *ExitStatementContext) i
 	return v.VisitChildren(ctx)
 }
 
-func (v *BaseKumirParserVisitor) VisitStopStatement(ctx *StopStatementContext) interface{} {
-	return v.VisitChildren(ctx)
-}
-
 func (v *BaseKumirParserVisitor) VisitStatement(ctx *StatementContext) interface{} {
 	return v.VisitChildren(ctx)
 }

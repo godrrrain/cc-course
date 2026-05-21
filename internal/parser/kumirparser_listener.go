@@ -142,9 +142,6 @@ type KumirParserListener interface {
 	// EnterExitStatement is called when entering the exitStatement production.
 	EnterExitStatement(c *ExitStatementContext)
 
-	// EnterStopStatement is called when entering the stopStatement production.
-	EnterStopStatement(c *StopStatementContext)
-
 	// EnterStatement is called when entering the statement production.
 	EnterStatement(c *StatementContext)
 
@@ -291,9 +288,6 @@ type KumirParserListener interface {
 
 	// ExitExitStatement is called when exiting the exitStatement production.
 	ExitExitStatement(c *ExitStatementContext)
-
-	// ExitStopStatement is called when exiting the stopStatement production.
-	ExitStopStatement(c *StopStatementContext)
 
 	// ExitStatement is called when exiting the statement production.
 	ExitStatement(c *StatementContext)

@@ -292,12 +292,6 @@ func (s *BaseKumirParserListener) EnterExitStatement(ctx *ExitStatementContext) 
 // ExitExitStatement is called when production exitStatement is exited.
 func (s *BaseKumirParserListener) ExitExitStatement(ctx *ExitStatementContext) {}
 
-// EnterStopStatement is called when production stopStatement is entered.
-func (s *BaseKumirParserListener) EnterStopStatement(ctx *StopStatementContext) {}
-
-// ExitStopStatement is called when production stopStatement is exited.
-func (s *BaseKumirParserListener) ExitStopStatement(ctx *StopStatementContext) {}
-
 // EnterStatement is called when production statement is entered.
 func (s *BaseKumirParserListener) EnterStatement(ctx *StatementContext) {}
 
