@@ -1,66 +1,89 @@
 package visitor
 
 import (
-	"fmt"
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir/types"
 )
 
-func (v *IRVisitor) VisitTypeSpecifier(ctx *parser.TypeSpecifierContext) interface{} {
-	if ctx.ArrayType() != nil {
-		typ := v.Visit(ctx.ArrayType())
-		if t, ok := typ.(types.Type); ok {
-			return t
-		}
-		v.Errors = append(v.Errors, fmt.Errorf("invalid array type: %v", ctx.GetText()))
-		return types.I32
+func (v *IRVisitor) VisitType(ctx *parser.TypeContext) interface{} {
+	if ctx.FunctionType() != nil {
+		return v.Visit(ctx.FunctionType())
 	}
-
-	baseVal := v.Visit(ctx.BasicType())
-	base, ok := baseVal.(types.Type)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid basic type: %v", ctx.GetText()))
-		base = types.I32
+	if ctx.TypeNotFunction() != nil {
+		return v.Visit(ctx.TypeNotFunction())
 	}
-	if ctx.TABLE_SUFFIX() != nil {
-		return types.NewPointer(base)
-	}
-	return base
+	return types.I64
 }
 
-func (v *IRVisitor) VisitBasicType(ctx *parser.BasicTypeContext) interface{} {
-	if ctx.INTEGER_TYPE() != nil {
-		return types.I32
-	} else if ctx.REAL_TYPE() != nil {
-		return types.Double
-	} else if ctx.BOOLEAN_TYPE() != nil {
-		return types.I1
-	} else if ctx.CHAR_TYPE() != nil {
-		return types.I8
-	} else if ctx.STRING_TYPE() != nil {
+func (v *IRVisitor) VisitTypeNotVoid(ctx *parser.TypeNotVoidContext) interface{} {
+	if ctx.FunctionType() != nil {
+		return v.Visit(ctx.FunctionType())
+	}
+	if ctx.TypeNotVoidNotFunction() != nil {
+		return v.Visit(ctx.TypeNotVoidNotFunction())
+	}
+	return types.I64
+}
+
+func (v *IRVisitor) VisitTypeNotVoidNotFunction(ctx *parser.TypeNotVoidNotFunctionContext) interface{} {
+	if ctx.TypeName() != nil {
+		typeName := ctx.TypeName().GetText()
+		switch typeName {
+		case "int":
+			return types.I64
+		case "double":
+			return types.Double
+		case "bool":
+			return types.I1
+		case "String":
+			return types.NewPointer(types.I8)
+		case "num":
+			return types.Double
+		case "dynamic", "var":
+			return types.I64
+		}
+	}
+	if ctx.FUNCTION_() != nil {
 		return types.NewPointer(types.I8)
 	}
-	v.Errors = append(v.Errors, fmt.Errorf("unknown basic type: %s", ctx.GetText()))
-	return types.I32
+	return types.I64
 }
 
-func (v *IRVisitor) VisitArrayType(ctx *parser.ArrayTypeContext) interface{} {
-	var elementType types.Type
+func (v *IRVisitor) VisitTypeName(ctx *parser.TypeNameContext) interface{} {
+	return ctx.GetText()
+}
 
-	if ctx.INTEGER_ARRAY_TYPE() != nil {
-		elementType = types.I32
-	} else if ctx.REAL_ARRAY_TYPE() != nil {
-		elementType = types.Double
-	} else if ctx.BOOLEAN_ARRAY_TYPE() != nil {
-		elementType = types.I1
-	} else if ctx.CHAR_ARRAY_TYPE() != nil {
-		elementType = types.I8
-	} else if ctx.STRING_ARRAY_TYPE() != nil {
-		elementType = types.NewPointer(types.I8)
-	} else {
-		v.Errors = append(v.Errors, fmt.Errorf("unknown array type %s", ctx.GetText()))
-		return types.Void
+func (v *IRVisitor) VisitTypeArguments(ctx *parser.TypeArgumentsContext) interface{} {
+	if ctx.TypeList() != nil {
+		return v.Visit(ctx.TypeList())
 	}
+	return nil
+}
 
-	return elementType
+func (v *IRVisitor) VisitTypeList(ctx *parser.TypeListContext) interface{} {
+	var typeList []types.Type
+	for _, t := range ctx.AllType_() {
+		if typ := v.Visit(t); typ != nil {
+			if tt, ok := typ.(types.Type); ok {
+				typeList = append(typeList, tt)
+			}
+		}
+	}
+	return typeList
+}
+
+func (v *IRVisitor) VisitFunctionType(ctx *parser.FunctionTypeContext) interface{} {
+	return types.NewPointer(types.I8)
+}
+
+func (v *IRVisitor) VisitTypeParameters(ctx *parser.TypeParametersContext) interface{} {
+	return nil
+}
+
+func (v *IRVisitor) VisitTypeParameterList(ctx *parser.TypeParameterListContext) interface{} {
+	return nil
+}
+
+func (v *IRVisitor) VisitTypeParameter(ctx *parser.TypeParameterContext) interface{} {
+	return nil
 }

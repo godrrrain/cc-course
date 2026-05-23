@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	input  = flag.String("i", "examples/2+2.kum", "source .kum file")
+	input  = flag.String("i", "examples/hello.dart", "source .dart file")
 	output = flag.String("o", "examples/out", "executable program")
 	isDOT  = flag.Bool("d", true, "output as DOT")
 )

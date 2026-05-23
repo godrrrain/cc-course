@@ -17,17 +17,17 @@ func Compiler(input, output string, isDOT bool) error {
 		return fmt.Errorf("compiler input error: %w", err)
 	}
 
-	lexer := parser.NewKumirLexer(fileStream)
+	lexer := parser.NewDart2Lexer(fileStream)
 	tokens := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
-	p := parser.NewKumirParser(tokens)
+	p := parser.NewDart2Parser(tokens)
 
-	errListener := newKumirErrorListener()
+	errListener := newDartErrorListener()
 	p.AddErrorListener(errListener)
 	if len(errListener.errs) > 0 {
 		return fmt.Errorf("compiler parser error: %w", errListener.errs[0])
 	}
 
-	tree := p.Program()
+	tree := p.CompilationUnit()
 
 	if isDOT {
 		err := ast.SaveTreeToFile(tree, p, output)
@@ -66,19 +66,19 @@ type customErrorListener struct {
 	IsError bool
 }
 
-type kumirErrorListener struct {
+type dartErrorListener struct {
 	*antlr.DefaultErrorListener
 	errs []error
 }
 
-func newKumirErrorListener() *kumirErrorListener {
-	return &kumirErrorListener{
+func newDartErrorListener() *dartErrorListener {
+	return &dartErrorListener{
 		DefaultErrorListener: new(antlr.DefaultErrorListener),
 		errs:                 make([]error, 0),
 	}
 }
 
-func (l *kumirErrorListener) SyntaxError(
+func (l *dartErrorListener) SyntaxError(
 	recognizer antlr.Recognizer,
 	offendingSymbol interface{},
 	line, column int,

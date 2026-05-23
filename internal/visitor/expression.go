@@ -2,294 +2,510 @@ package visitor
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
-	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 )
 
-func (v *IRVisitor) VisitLvalue(ctx *parser.LvalueContext) interface{} {
-	if ctx.RETURN_VALUE() != nil {
-		if v.currentFunc.Sig.RetType == types.Void {
-			v.Errors = append(v.Errors, fmt.Errorf("'знач' used in procedure (void) context"))
-			return nil
+func (v *IRVisitor) VisitExpression(ctx *parser.ExpressionContext) interface{} {
+	switch {
+	case ctx.AssignableExpression() != nil && ctx.AssignmentOperator() != nil:
+		if ae, ok := ctx.AssignableExpression().(*parser.AssignableExpressionContext); ok {
+			return v.VisitAssignableExpression(ae)
 		}
-		vi, ok := v.currentScope.Get(returnNameVar)
-		if !ok {
-			retAlloca := v.currentBlock.NewAlloca(v.currentFunc.Sig.RetType)
-			vi = &VariableInfo{
-				Name:      returnNameVar,
-				Type:      v.currentFunc.Sig.RetType,
-				LLVMValue: retAlloca,
-			}
-			_ = v.currentScope.Set(returnNameVar, vi)
-		}
-		return vi.LLVMValue
+	case ctx.ConditionalExpression() != nil:
+		return v.Visit(ctx.ConditionalExpression())
+	case ctx.ThrowExpression() != nil:
+		return v.Visit(ctx.ThrowExpression())
 	}
-
-	identVal := v.Visit(ctx.QualifiedIdentifier())
-	vi, ok := identVal.(*VariableInfo)
-	if !ok || vi == nil {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid lvalue: expected variable"))
-		return nil
-	}
-
-	if ctx.IndexList() == nil {
-		return vi.LLVMValue
-	}
-
-	indicesVal := v.Visit(ctx.IndexList())
-	rawIndices, ok := indicesVal.([]value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid index list for array access"))
-		return nil
-	}
-
-	return v.getArrayElementPtr(vi, rawIndices)
+	return nil
 }
 
-func (v *IRVisitor) VisitIndexList(ctx *parser.IndexListContext) interface{} {
-	if ctx.COLON() != nil {
-		v.Errors = append(v.Errors, fmt.Errorf("array slices are not yet supported"))
+func (v *IRVisitor) VisitConditionalExpression(ctx *parser.ConditionalExpressionContext) interface{} {
+	if ctx.IfNullExpression() == nil {
 		return nil
 	}
-
-	exprs := ctx.AllExpression()
-	if len(exprs) == 2 {
-		a := v.Visit(exprs[0])
-		b := v.Visit(exprs[1])
-		va, ok1 := a.(value.Value)
-		vb, ok2 := b.(value.Value)
-		if !ok1 || !ok2 {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid expressions in index list"))
-			return nil
-		}
-		return []value.Value{va, vb}
-	}
-
-	if len(exprs) == 1 {
-		e := v.Visit(exprs[0])
-		ve, ok := e.(value.Value)
+	val := v.Visit(ctx.IfNullExpression())
+	if ctx.QUES() != nil && len(ctx.AllExpressionWithoutCascade()) == 2 {
+		condVal, ok := val.(value.Value)
 		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid expression in index list"))
+			v.Errors = append(v.Errors, fmt.Errorf("invalid condition in ternary expression"))
 			return nil
 		}
-		return []value.Value{ve}
-	}
+		thenBlock := v.currentFunc.NewBlock("tern.then")
+		elseBlock := v.currentFunc.NewBlock("tern.else")
+		mergeBlock := v.currentFunc.NewBlock("tern.end")
 
-	v.Errors = append(v.Errors, fmt.Errorf("unsupported index list format"))
+		v.currentBlock.NewCondBr(condVal, thenBlock, elseBlock)
+
+		v.pushBlock(thenBlock)
+		thenVal := v.Visit(ctx.ExpressionWithoutCascade(0))
+		thenV, _ := thenVal.(value.Value)
+		if v.currentBlock.Term == nil {
+			v.currentBlock.NewBr(mergeBlock)
+		}
+		v.popBlock()
+
+		v.pushBlock(elseBlock)
+		elseVal := v.Visit(ctx.ExpressionWithoutCascade(1))
+		elseV, _ := elseVal.(value.Value)
+		if v.currentBlock.Term == nil {
+			v.currentBlock.NewBr(mergeBlock)
+		}
+		v.popBlock()
+
+		v.currentBlock = mergeBlock
+		phi := v.currentBlock.NewPhi()
+		phi.Incs = append(phi.Incs, ir.NewIncoming(thenV, thenBlock))
+		phi.Incs = append(phi.Incs, ir.NewIncoming(elseV, elseBlock))
+		return phi
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitIfNullExpression(ctx *parser.IfNullExpressionContext) interface{} {
+	val := v.Visit(ctx.LogicalOrExpression(0))
+	for i := 1; i < len(ctx.AllLogicalOrExpression()); i++ {
+		rhs := v.Visit(ctx.LogicalOrExpression(i))
+		_ = rhs
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitLogicalOrExpression(ctx *parser.LogicalOrExpressionContext) interface{} {
+	val := v.Visit(ctx.LogicalAndExpression(0))
+	for i := 1; i < len(ctx.AllLogicalAndExpression()); i++ {
+		rhs := v.Visit(ctx.LogicalAndExpression(i))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if ok1 && ok2 {
+			val = v.currentBlock.NewOr(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitLogicalAndExpression(ctx *parser.LogicalAndExpressionContext) interface{} {
+	val := v.Visit(ctx.BitwiseOrExpression(0))
+	for i := 1; i < len(ctx.AllBitwiseOrExpression()); i++ {
+		rhs := v.Visit(ctx.BitwiseOrExpression(i))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if ok1 && ok2 {
+			val = v.currentBlock.NewAnd(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitBitwiseOrExpression(ctx *parser.BitwiseOrExpressionContext) interface{} {
+	val := v.Visit(ctx.BitwiseXorExpression(0))
+	for i := 1; i < len(ctx.AllBitwiseXorExpression()); i++ {
+		rhs := v.Visit(ctx.BitwiseXorExpression(i))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if ok1 && ok2 {
+			val = v.currentBlock.NewOr(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitBitwiseXorExpression(ctx *parser.BitwiseXorExpressionContext) interface{} {
+	val := v.Visit(ctx.BitwiseAndExpression(0))
+	for i := 1; i < len(ctx.AllBitwiseAndExpression()); i++ {
+		rhs := v.Visit(ctx.BitwiseAndExpression(i))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if ok1 && ok2 {
+			val = v.currentBlock.NewXor(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitBitwiseAndExpression(ctx *parser.BitwiseAndExpressionContext) interface{} {
+	val := v.Visit(ctx.ShiftExpression(0))
+	for i := 1; i < len(ctx.AllShiftExpression()); i++ {
+		rhs := v.Visit(ctx.ShiftExpression(i))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if ok1 && ok2 {
+			val = v.currentBlock.NewAnd(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitShiftExpression(ctx *parser.ShiftExpressionContext) interface{} {
+	val := v.Visit(ctx.AdditiveExpression(0))
+	for i := 1; i < ctx.GetChildCount(); i += 2 {
+		rhs := v.Visit(ctx.AdditiveExpression((i + 1) / 2))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if !ok1 || !ok2 {
+			continue
+		}
+		node := ctx.GetChild(i)
+		if token, ok := node.(antlr.TerminalNode); ok {
+			switch token.GetText() {
+			case "<<":
+				val = v.currentBlock.NewShl(lhsV, rhsV)
+			case ">>":
+				val = v.currentBlock.NewAShr(lhsV, rhsV)
+			}
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitAdditiveExpression(ctx *parser.AdditiveExpressionContext) interface{} {
+	val := v.Visit(ctx.MultiplicativeExpression(0))
+	for i := 1; i < ctx.GetChildCount(); i += 2 {
+		rhs := v.Visit(ctx.MultiplicativeExpression((i + 1) / 2))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if !ok1 || !ok2 {
+			continue
+		}
+		lhsV, rhsV = v.castToMatch(lhsV, rhsV)
+		node := ctx.GetChild(i)
+		if token, ok := node.(antlr.TerminalNode); ok {
+			switch token.GetText() {
+			case "+":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFAdd(lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewAdd(lhsV, rhsV)
+				}
+			case "-":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFSub(lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewSub(lhsV, rhsV)
+				}
+			}
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitMultiplicativeExpression(ctx *parser.MultiplicativeExpressionContext) interface{} {
+	val := v.Visit(ctx.UnaryExpression(0))
+	for i := 1; i < ctx.GetChildCount(); i += 2 {
+		rhs := v.Visit(ctx.UnaryExpression((i + 1) / 2))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if !ok1 || !ok2 {
+			continue
+		}
+		lhsV, rhsV = v.castToMatch(lhsV, rhsV)
+		node := ctx.GetChild(i)
+		if token, ok := node.(antlr.TerminalNode); ok {
+			switch token.GetText() {
+			case "*":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFMul(lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewMul(lhsV, rhsV)
+				}
+			case "/":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFDiv(lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewSDiv(lhsV, rhsV)
+				}
+			case "~/":
+				val = v.currentBlock.NewSDiv(lhsV, rhsV)
+			case "%":
+				val = v.currentBlock.NewSRem(lhsV, rhsV)
+			}
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitUnaryExpression(ctx *parser.UnaryExpressionContext) interface{} {
+	switch {
+	case ctx.PLUS() != nil:
+		return v.Visit(ctx.UnaryExpression())
+	case ctx.MINUS() != nil && ctx.UnaryExpression() != nil:
+		val := v.Visit(ctx.UnaryExpression())
+		if vv, ok := val.(value.Value); ok {
+			switch vv.Type().(type) {
+			case *types.FloatType:
+				zero := constant.NewFloat(vv.Type().(*types.FloatType), 0)
+				return v.currentBlock.NewFSub(zero, vv)
+			case *types.IntType:
+				zero := constant.NewInt(vv.Type().(*types.IntType), 0)
+				return v.currentBlock.NewSub(zero, vv)
+			}
+		}
+		return nil
+	case ctx.NOT() != nil:
+		val := v.Visit(ctx.UnaryExpression())
+		if vv, ok := val.(value.Value); ok {
+			if _, ok := vv.Type().(*types.IntType); ok {
+				return v.currentBlock.NewXor(vv, constant.NewInt(types.I1, 1))
+			}
+		}
+		return nil
+	case ctx.TILDE() != nil:
+		val := v.Visit(ctx.UnaryExpression())
+		if vv, ok := val.(value.Value); ok {
+			return v.currentBlock.NewXor(vv, constant.NewInt(vv.Type().(*types.IntType), -1))
+		}
+		return nil
+	case ctx.AwaitExpression() != nil:
+		return v.Visit(ctx.AwaitExpression())
+	case ctx.PostfixExpression() != nil:
+		return v.Visit(ctx.PostfixExpression())
+	}
 	return nil
+}
+
+func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext) interface{} {
+	if ctx.AssignableExpression() != nil && (ctx.PLUS_PLUS() != nil || ctx.MINUS_MINUS() != nil) {
+		val := v.Visit(ctx.AssignableExpression())
+		if vi, ok := val.(*VariableInfo); ok {
+			loaded := v.currentBlock.NewLoad(vi.Type, vi.LLVMValue)
+			var delta value.Value
+			switch vi.Type.(type) {
+			case *types.FloatType:
+				delta = constant.NewFloat(vi.Type.(*types.FloatType), 1)
+			case *types.IntType:
+				delta = constant.NewInt(vi.Type.(*types.IntType), 1)
+			}
+			if delta != nil {
+				var newVal value.Value
+				if ctx.PLUS_PLUS() != nil {
+					if _, ok := vi.Type.(*types.FloatType); ok {
+						newVal = v.currentBlock.NewFAdd(loaded, delta)
+					} else {
+						newVal = v.currentBlock.NewAdd(loaded, delta)
+					}
+				} else {
+					if _, ok := vi.Type.(*types.FloatType); ok {
+						newVal = v.currentBlock.NewFSub(loaded, delta)
+					} else {
+						newVal = v.currentBlock.NewSub(loaded, delta)
+					}
+				}
+				v.currentBlock.NewStore(newVal, vi.LLVMValue)
+			}
+			return loaded
+		}
+	}
+	if ctx.Primary() != nil {
+		currentVal := v.Visit(ctx.Primary())
+		for _, sel := range ctx.AllSelector() {
+			if ap := sel.ArgumentPart(); ap != nil {
+				fn, ok := currentVal.(*ir.Func)
+				if !ok {
+					v.Errors = append(v.Errors, fmt.Errorf("attempt to call non-function value"))
+					return nil
+				}
+				argVal := v.Visit(ap)
+				args, _ := argVal.([]value.Value)
+				if fn.Name() == "printf" && len(args) > 0 {
+					formatStr := v.defineGlobalString("%s\n")
+					callArgs := []value.Value{formatStr}
+					callArgs = append(callArgs, args...)
+					currentVal = v.currentBlock.NewCall(fn, callArgs...)
+				} else {
+					currentVal = v.currentBlock.NewCall(fn, args...)
+				}
+			} else if sel.LBRACKET() != nil && sel.Expression() != nil {
+				v.Visit(sel.Expression())
+			}
+		}
+		return currentVal
+	}
+	return nil
+}
+
+func (v *IRVisitor) VisitPrimary(ctx *parser.PrimaryContext) interface{} {
+	switch {
+	case ctx.ThisExpression() != nil:
+		return v.Visit(ctx.ThisExpression())
+	case ctx.IDENTIFIER() != nil:
+		name := ctx.IDENTIFIER().GetText()
+		if vi, ok := v.currentScope.Get(name); ok {
+			if ptrTy, ok := vi.LLVMValue.Type().(*types.PointerType); ok {
+				return v.currentBlock.NewLoad(ptrTy.ElemType, vi.LLVMValue)
+			}
+			return vi.LLVMValue
+		}
+		if fn, ok := v.funcs[name]; ok {
+			return fn
+		}
+		v.Errors = append(v.Errors, fmt.Errorf("undefined identifier: %s", name))
+		return nil
+	case ctx.Literal() != nil:
+		return v.Visit(ctx.Literal())
+	case ctx.NewExpr() != nil:
+		return v.Visit(ctx.NewExpr())
+	case ctx.ConstExpression() != nil:
+		return v.Visit(ctx.ConstExpression())
+	case ctx.FunctionExpression() != nil:
+		return v.Visit(ctx.FunctionExpression())
+	case ctx.Expression() != nil:
+		return v.Visit(ctx.Expression())
+	}
+	return nil
+}
+
+func (v *IRVisitor) VisitLiteral(ctx *parser.LiteralContext) interface{} {
+	switch {
+	case ctx.NullLiteral() != nil:
+		return v.Visit(ctx.NullLiteral())
+	case ctx.BooleanLiteral() != nil:
+		return v.Visit(ctx.BooleanLiteral())
+	case ctx.NumericLiteral() != nil:
+		return v.Visit(ctx.NumericLiteral())
+	case ctx.StringLiteral() != nil:
+		return v.Visit(ctx.StringLiteral())
+	case ctx.ListLiteral() != nil:
+		return v.Visit(ctx.ListLiteral())
+	case ctx.SetOrMapLiteral() != nil:
+		return v.Visit(ctx.SetOrMapLiteral())
+	}
+	return nil
+}
+
+func (v *IRVisitor) VisitNullLiteral(ctx *parser.NullLiteralContext) interface{} {
+	return constant.NewNull(types.NewPointer(types.I8))
+}
+
+func (v *IRVisitor) VisitBooleanLiteral(ctx *parser.BooleanLiteralContext) interface{} {
+	if ctx.TRUE_() != nil {
+		return constant.NewInt(types.I1, 1)
+	}
+	return constant.NewInt(types.I1, 0)
+}
+
+func (v *IRVisitor) VisitNumericLiteral(ctx *parser.NumericLiteralContext) interface{} {
+	if ctx.NUMBER() != nil {
+		text := ctx.NUMBER().GetText()
+		if val, err := strconv.ParseFloat(text, 64); err == nil {
+			if val == float64(int64(val)) {
+				return constant.NewInt(types.I64, int64(val))
+			}
+			return constant.NewFloat(types.Double, val)
+		}
+	}
+	if ctx.HEX_NUMBER() != nil {
+		text := ctx.HEX_NUMBER().GetText()
+		if val, err := strconv.ParseInt(text, 0, 64); err == nil {
+			return constant.NewInt(types.I64, val)
+		}
+	}
+	return constant.NewInt(types.I64, 0)
+}
+
+func (v *IRVisitor) VisitStringLiteral(ctx *parser.StringLiteralContext) interface{} {
+	text := ctx.GetText()
+	unquoted := stripQuotes(text)
+	return v.defineGlobalString(unquoted)
+}
+
+func (v *IRVisitor) VisitListLiteral(ctx *parser.ListLiteralContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("list literals not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitSetOrMapLiteral(ctx *parser.SetOrMapLiteralContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("map/set literals not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitAssignableExpression(ctx *parser.AssignableExpressionContext) interface{} {
+	if ctx.IDENTIFIER() != nil {
+		name := ctx.IDENTIFIER().GetText()
+		if vi, ok := v.currentScope.Get(name); ok {
+			return vi
+		}
+		v.Errors = append(v.Errors, fmt.Errorf("undefined variable: %s", name))
+		return nil
+	}
+	if ctx.Primary() != nil {
+		return v.Visit(ctx.Primary())
+	}
+	return nil
+}
+
+func (v *IRVisitor) VisitSelector(ctx *parser.SelectorContext) interface{} {
+	if ctx.DOT() != nil && ctx.IDENTIFIER() != nil {
+		_ = ctx.IDENTIFIER().GetText()
+	}
+	if ctx.LBRACKET() != nil && ctx.Expression() != nil {
+		return v.Visit(ctx.Expression())
+	}
+	return nil
+}
+
+func (v *IRVisitor) VisitThrowExpression(ctx *parser.ThrowExpressionContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("throw expressions not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitAwaitExpression(ctx *parser.AwaitExpressionContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("await expressions not yet implemented"))
+	return v.Visit(ctx.UnaryExpression())
+}
+
+func (v *IRVisitor) VisitThisExpression(ctx *parser.ThisExpressionContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("this expressions not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitNewExpr(ctx *parser.NewExprContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("new expressions not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitConstExpression(ctx *parser.ConstExpressionContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("const expressions not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitFunctionExpression(ctx *parser.FunctionExpressionContext) interface{} {
+	v.Errors = append(v.Errors, fmt.Errorf("function expressions not yet implemented"))
+	return nil
+}
+
+func (v *IRVisitor) VisitExpressionList(ctx *parser.ExpressionListContext) interface{} {
+	var vals []value.Value
+	for _, expr := range ctx.AllExpression() {
+		if val, ok := v.Visit(expr).(value.Value); ok {
+			vals = append(vals, val)
+		}
+	}
+	return vals
 }
 
 func (v *IRVisitor) ensureI32(idx value.Value) value.Value {
 	if idx.Type().Equal(types.I32) {
 		return idx
 	}
-	intTy, ok := idx.Type().(*types.IntType)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("index expression must evaluate to integer, got %s", idx.Type().String()))
-		return constant.NewInt(types.I32, 0)
-	}
-
-	switch {
-	case intTy.BitSize > 32:
-		return v.currentBlock.NewTrunc(idx, types.I32)
-	case intTy.BitSize < 32:
-		return v.currentBlock.NewZExt(idx, types.I32)
-	default:
-		return idx
-	}
-}
-
-func (v *IRVisitor) VisitExpression(ctx *parser.ExpressionContext) interface{} {
-	if ctx.LogicalOrExpression() != nil {
-		return v.Visit(ctx.LogicalOrExpression())
-	}
-	v.Errors = append(v.Errors, fmt.Errorf("invalid expression context"))
-	return nil
-}
-
-func (v *IRVisitor) VisitExpressionList(ctx *parser.ExpressionListContext) interface{} {
-	for _, i := range ctx.AllExpression() {
-		v.Visit(i)
-	}
-	return nil
-}
-
-func (v *IRVisitor) VisitPrimaryExpression(ctx *parser.PrimaryExpressionContext) interface{} {
-	switch {
-	case ctx.Literal() != nil:
-		return v.Visit(ctx.Literal())
-
-	case ctx.QualifiedIdentifier() != nil:
-		idVal := v.Visit(ctx.QualifiedIdentifier())
-
-		if vi, ok := idVal.(*VariableInfo); ok {
-			if _, isPtr := vi.LLVMValue.Type().(*types.PointerType); isPtr {
-				if _, isArray := vi.Type.(*types.ArrayType); isArray {
-					return vi.LLVMValue
-				}
-				return v.currentBlock.NewLoad(vi.Type, vi.LLVMValue)
-			}
-			return vi.LLVMValue
+	if intTy, ok := idx.Type().(*types.IntType); ok {
+		if intTy.BitSize > 32 {
+			return v.currentBlock.NewTrunc(idx, types.I32)
 		}
-
-		return idVal
-
-	case ctx.RETURN_VALUE() != nil:
-		vi, ok := v.currentScope.Get(returnNameVar)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("'знач' accessed but not defined"))
-			return nil
-		}
-		return v.currentBlock.NewLoad(vi.Type, vi.LLVMValue)
-
-	case ctx.Expression() != nil:
-		return v.Visit(ctx.Expression())
-
-	case ctx.ArrayLiteral() != nil:
-		v.Errors = append(v.Errors, fmt.Errorf("array literals not implemented"))
-		return nil
-
-	default:
-		v.Errors = append(v.Errors, fmt.Errorf("invalid primary expression"))
-		return nil
-	}
-}
-
-func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext) interface{} {
-	base := v.Visit(ctx.PrimaryExpression())
-	val, ok := base.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid primary expression in postfix"))
-		return nil
-	}
-
-	var vi *VariableInfo
-	if ctx.PrimaryExpression().QualifiedIdentifier() != nil {
-		if qval, ok := v.Visit(ctx.PrimaryExpression().QualifiedIdentifier()).(*VariableInfo); ok {
-			vi = qval
+		if intTy.BitSize < 32 {
+			return v.currentBlock.NewZExt(idx, types.I32)
 		}
 	}
-
-	currentVal := val
-	var elementType types.Type
-	indexed := false
-
-	for _, child := range ctx.GetChildren()[1:] {
-		switch node := child.(type) {
-		case antlr.TerminalNode:
-			continue
-
-		case *parser.IndexListContext:
-			indexed = true
-			indicesIfc := v.Visit(node)
-			indices, ok := indicesIfc.([]value.Value)
-			if !ok {
-				v.Errors = append(v.Errors, fmt.Errorf("invalid index list"))
-				return nil
-			}
-			if vi != nil {
-				elementType = vi.Type
-				for i := 0; i < len(indices); i++ {
-					if arrTy, ok := elementType.(*types.ArrayType); ok {
-						elementType = arrTy.ElemType
-					} else {
-						break
-					}
-				}
-				currentVal = v.getArrayElementPtr(vi, indices)
-			} else {
-				args := append([]value.Value{constant.NewInt(types.I32, 0)}, indices...)
-				ptrType, ok := currentVal.Type().(*types.PointerType)
-				if !ok {
-					v.Errors = append(v.Errors, fmt.Errorf("indexed value is not a pointer"))
-					return nil
-				}
-				elementType = ptrType.ElemType
-				for i := 0; i < len(indices); i++ {
-					if arrTy, ok := elementType.(*types.ArrayType); ok {
-						elementType = arrTy.ElemType
-					} else {
-						break
-					}
-				}
-				currentVal = v.currentBlock.NewGetElementPtr(ptrType.ElemType, currentVal, args...)
-			}
-
-		case *parser.ArgumentListContext:
-			argsIfc := v.Visit(node)
-			args, ok := argsIfc.([]value.Value)
-			if !ok {
-				v.Errors = append(v.Errors, fmt.Errorf("invalid argument list"))
-				return nil
-			}
-			fn, ok := currentVal.(*ir.Func)
-			if !ok {
-				v.Errors = append(v.Errors, fmt.Errorf("attempt to call non-function value"))
-				return nil
-			}
-			currentVal = v.currentBlock.NewCall(fn, args...)
-
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unexpected postfix expression element: %T", node))
-			return nil
-		}
-	}
-
-	if indexed {
-		if ptrType, isPtr := currentVal.Type().(*types.PointerType); isPtr {
-			et := elementType
-			if et == nil {
-				et = ptrType.ElemType
-			}
-			currentVal = v.currentBlock.NewLoad(et, currentVal)
-		}
-	}
-
-	return currentVal
-}
-
-func (v *IRVisitor) VisitUnaryExpression(ctx *parser.UnaryExpressionContext) interface{} {
-	if ctx.PLUS() != nil || ctx.MINUS() != nil || ctx.NOT() != nil {
-		expr := v.Visit(ctx.UnaryExpression())
-		val, ok := expr.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid operand in unary expression"))
-			return nil
-		}
-
-		switch {
-		case ctx.PLUS() != nil:
-			return val
-
-		case ctx.MINUS() != nil:
-			switch t := val.Type().(type) {
-			case *types.FloatType:
-				zero := constant.NewFloat(t, 0)
-				return v.currentBlock.NewFSub(zero, val)
-
-			case *types.IntType:
-				zero := constant.NewInt(t, 0)
-				return v.currentBlock.NewSub(zero, val)
-
-			default:
-				v.Errors = append(v.Errors, fmt.Errorf("unsupported type for unary minus"))
-				return nil
-			}
-
-		case ctx.NOT() != nil:
-			return v.currentBlock.NewXor(val, constant.NewInt(types.I1, 1))
-
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unsupported unary operator"))
-			return nil
-		}
-	}
-	return v.Visit(ctx.PostfixExpression())
+	return idx
 }
 
 func (v *IRVisitor) ensurePowFunc() *ir.Func {
@@ -301,300 +517,4 @@ func (v *IRVisitor) ensurePowFunc() *ir.Func {
 		ir.NewParam("exp", types.Double))
 	v.funcs["pow"] = pow
 	return pow
-}
-
-func (v *IRVisitor) VisitPowerExpression(ctx *parser.PowerExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.UnaryExpression())
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid base operand in power expression"))
-		return nil
-	}
-
-	if ctx.POWER() == nil {
-		return lhs
-	}
-	rhsRaw := v.Visit(ctx.PowerExpression())
-	rhs, ok := rhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid exponent operand in power expression"))
-		return nil
-	}
-
-	isFloat := func(t types.Type) bool {
-		_, ok := t.(*types.FloatType)
-		return ok
-	}
-	isFloatBase := isFloat(lhs.Type())
-	isFloatExp := isFloat(rhs.Type())
-	useFloat := isFloatBase || isFloatExp
-
-	toDouble := func(val value.Value) value.Value {
-		if isFloat(val.Type()) && val.Type().Equal(types.Float) {
-			return v.currentBlock.NewFPExt(val, types.Double)
-		}
-		if _, ok := val.Type().(*types.IntType); ok {
-			return v.currentBlock.NewSIToFP(val, types.Double)
-		}
-		return val
-	}
-
-	baseD := toDouble(lhs)
-	expD := toDouble(rhs)
-
-	resD := v.currentBlock.NewCall(v.ensurePowFunc(), baseD, expD)
-
-	if !useFloat {
-		return v.currentBlock.NewFPToSI(resD, types.I32)
-	}
-	return resD
-}
-
-func (v *IRVisitor) VisitMultiplicativeExpression(ctx *parser.MultiplicativeExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.PowerExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand in multiplicative expression"))
-		return nil
-	}
-	for i := 1; i < ctx.GetChildCount(); i += 2 {
-		rhs := v.Visit(ctx.PowerExpression((i + 1) / 2))
-		rhsVal, ok := rhs.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand in multiplicative expression"))
-			return nil
-		}
-
-		lhs, rhsVal = v.castToMatch(lhs, rhsVal)
-
-		node := ctx.GetChild(i)
-		token, ok := node.(antlr.TerminalNode)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("unexpected non-terminal in multiplicative expression"))
-			return nil
-		}
-		switch token.GetText() {
-		case "*":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFMul(lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewMul(lhs, rhsVal)
-			}
-		case "/":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFDiv(lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewSDiv(lhs, rhsVal)
-			}
-		case "div":
-			lhs = v.currentBlock.NewSDiv(lhs, rhsVal)
-		case "mod":
-			lhs = v.currentBlock.NewSRem(lhs, rhsVal)
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unsupported multiplicative operator: %s", token.GetText()))
-			return nil
-		}
-	}
-	return lhs
-}
-
-func (v *IRVisitor) VisitAdditiveExpression(ctx *parser.AdditiveExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.MultiplicativeExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand in additive expression"))
-		return nil
-	}
-	for i := 1; i < ctx.GetChildCount(); i += 2 {
-		rhs := v.Visit(ctx.MultiplicativeExpression((i + 1) / 2))
-		rhsVal, ok := rhs.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand in additive expression"))
-			return nil
-		}
-
-		lhs, rhsVal = v.castToMatch(lhs, rhsVal)
-
-		node := ctx.GetChild(i)
-		token, ok := node.(antlr.TerminalNode)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("unexpected non-terminal in additive expression"))
-			return nil
-		}
-		switch token.GetText() {
-		case "+":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFAdd(lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewAdd(lhs, rhsVal)
-			}
-		case "-":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFSub(lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewSub(lhs, rhsVal)
-			}
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unsupported additive operator: %s", token.GetText()))
-			return nil
-		}
-	}
-	return lhs
-}
-
-func (v *IRVisitor) VisitRelationalExpression(ctx *parser.RelationalExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.AdditiveExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand in relational expression"))
-		return nil
-	}
-	for i := 1; i < ctx.GetChildCount(); i += 2 {
-		rhs := v.Visit(ctx.AdditiveExpression((i + 1) / 2))
-		rhsVal, ok := rhs.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand in relational expression"))
-			return nil
-		}
-
-		lhs, rhsVal = v.castToMatch(lhs, rhsVal)
-
-		node := ctx.GetChild(i)
-		token, ok := node.(antlr.TerminalNode)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("unexpected non-terminal in relational expression"))
-			return nil
-		}
-		switch token.GetText() {
-		case "<":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredOLT, lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredSLT, lhs, rhsVal)
-			}
-		case "<=":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredOLE, lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredSLE, lhs, rhsVal)
-			}
-		case ">":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredOGT, lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredSGT, lhs, rhsVal)
-			}
-		case ">=":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredOGE, lhs, rhsVal)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredSGE, lhs, rhsVal)
-			}
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unsupported relational operator: %s", token.GetText()))
-			return nil
-		}
-	}
-	return lhs
-}
-
-func (v *IRVisitor) VisitEqualityExpression(ctx *parser.EqualityExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.RelationalExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand in equality expression"))
-		return nil
-	}
-
-	for i := 1; i < ctx.GetChildCount(); i += 2 {
-		rhsRaw := v.Visit(ctx.RelationalExpression((i + 1) / 2))
-		rhs, ok := rhsRaw.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand in equality expression"))
-			return nil
-		}
-
-		lhs, rhs = v.castToMatch(lhs, rhs)
-
-		node := ctx.GetChild(i)
-		token, ok := node.(antlr.TerminalNode)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("unexpected non-terminal in equality expression"))
-			return nil
-		}
-
-		switch token.GetText() {
-		case "=":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredOEQ, lhs, rhs)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredEQ, lhs, rhs)
-			}
-		case "<>":
-			switch lhs.Type().(type) {
-			case *types.FloatType:
-				lhs = v.currentBlock.NewFCmp(enum.FPredONE, lhs, rhs)
-			default:
-				lhs = v.currentBlock.NewICmp(enum.IPredNE, lhs, rhs)
-			}
-		default:
-			v.Errors = append(v.Errors, fmt.Errorf("unsupported equality operator: %s", token.GetText()))
-			return nil
-		}
-	}
-
-	return lhs
-}
-
-func (v *IRVisitor) VisitLogicalAndExpression(ctx *parser.LogicalAndExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.EqualityExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand for AND"))
-		return nil
-	}
-	for i := 1; i < len(ctx.AllEqualityExpression()); i++ {
-		rhs := v.Visit(ctx.EqualityExpression(i))
-		rhsVal, ok := rhs.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand for AND"))
-			return nil
-		}
-
-		lhs, rhsVal = v.castToMatch(lhs, rhsVal)
-
-		lhs = v.currentBlock.NewAnd(lhs, rhsVal)
-	}
-	return lhs
-}
-
-func (v *IRVisitor) VisitLogicalOrExpression(ctx *parser.LogicalOrExpressionContext) interface{} {
-	lhsRaw := v.Visit(ctx.LogicalAndExpression(0))
-	lhs, ok := lhsRaw.(value.Value)
-	if !ok {
-		v.Errors = append(v.Errors, fmt.Errorf("invalid operand for OR"))
-		return nil
-	}
-	for i := 1; i < len(ctx.AllLogicalAndExpression()); i++ {
-		rhs := v.Visit(ctx.LogicalAndExpression(i))
-		rhsVal, ok := rhs.(value.Value)
-		if !ok {
-			v.Errors = append(v.Errors, fmt.Errorf("invalid right-hand operand for OR"))
-			return nil
-		}
-
-		lhs, rhsVal = v.castToMatch(lhs, rhsVal)
-
-		lhs = v.currentBlock.NewOr(lhs, rhsVal)
-	}
-	return lhs
 }
