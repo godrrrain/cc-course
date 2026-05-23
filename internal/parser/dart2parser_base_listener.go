@@ -446,6 +446,18 @@ func (s *BaseDart2ParserListener) EnterLogicalAndExpression(ctx *LogicalAndExpre
 // ExitLogicalAndExpression is called when production logicalAndExpression is exited.
 func (s *BaseDart2ParserListener) ExitLogicalAndExpression(ctx *LogicalAndExpressionContext) {}
 
+// EnterEqualityExpression is called when production equalityExpression is entered.
+func (s *BaseDart2ParserListener) EnterEqualityExpression(ctx *EqualityExpressionContext) {}
+
+// ExitEqualityExpression is called when production equalityExpression is exited.
+func (s *BaseDart2ParserListener) ExitEqualityExpression(ctx *EqualityExpressionContext) {}
+
+// EnterRelationalExpression is called when production relationalExpression is entered.
+func (s *BaseDart2ParserListener) EnterRelationalExpression(ctx *RelationalExpressionContext) {}
+
+// ExitRelationalExpression is called when production relationalExpression is exited.
+func (s *BaseDart2ParserListener) ExitRelationalExpression(ctx *RelationalExpressionContext) {}
+
 // EnterBitwiseOrExpression is called when production bitwiseOrExpression is entered.
 func (s *BaseDart2ParserListener) EnterBitwiseOrExpression(ctx *BitwiseOrExpressionContext) {}
 

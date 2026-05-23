@@ -217,6 +217,12 @@ type Dart2ParserVisitor interface {
 	// Visit a parse tree produced by Dart2Parser#logicalAndExpression.
 	VisitLogicalAndExpression(ctx *LogicalAndExpressionContext) interface{}
 
+	// Visit a parse tree produced by Dart2Parser#equalityExpression.
+	VisitEqualityExpression(ctx *EqualityExpressionContext) interface{}
+
+	// Visit a parse tree produced by Dart2Parser#relationalExpression.
+	VisitRelationalExpression(ctx *RelationalExpressionContext) interface{}
+
 	// Visit a parse tree produced by Dart2Parser#bitwiseOrExpression.
 	VisitBitwiseOrExpression(ctx *BitwiseOrExpressionContext) interface{}
 

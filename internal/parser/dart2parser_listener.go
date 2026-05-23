@@ -217,6 +217,12 @@ type Dart2ParserListener interface {
 	// EnterLogicalAndExpression is called when entering the logicalAndExpression production.
 	EnterLogicalAndExpression(c *LogicalAndExpressionContext)
 
+	// EnterEqualityExpression is called when entering the equalityExpression production.
+	EnterEqualityExpression(c *EqualityExpressionContext)
+
+	// EnterRelationalExpression is called when entering the relationalExpression production.
+	EnterRelationalExpression(c *RelationalExpressionContext)
+
 	// EnterBitwiseOrExpression is called when entering the bitwiseOrExpression production.
 	EnterBitwiseOrExpression(c *BitwiseOrExpressionContext)
 
@@ -666,6 +672,12 @@ type Dart2ParserListener interface {
 
 	// ExitLogicalAndExpression is called when exiting the logicalAndExpression production.
 	ExitLogicalAndExpression(c *LogicalAndExpressionContext)
+
+	// ExitEqualityExpression is called when exiting the equalityExpression production.
+	ExitEqualityExpression(c *EqualityExpressionContext)
+
+	// ExitRelationalExpression is called when exiting the relationalExpression production.
+	ExitRelationalExpression(c *RelationalExpressionContext)
 
 	// ExitBitwiseOrExpression is called when exiting the bitwiseOrExpression production.
 	ExitBitwiseOrExpression(c *BitwiseOrExpressionContext)

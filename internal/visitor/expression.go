@@ -3,11 +3,13 @@ package visitor
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 )
@@ -91,13 +93,93 @@ func (v *IRVisitor) VisitLogicalOrExpression(ctx *parser.LogicalOrExpressionCont
 }
 
 func (v *IRVisitor) VisitLogicalAndExpression(ctx *parser.LogicalAndExpressionContext) interface{} {
-	val := v.Visit(ctx.BitwiseOrExpression(0))
-	for i := 1; i < len(ctx.AllBitwiseOrExpression()); i++ {
-		rhs := v.Visit(ctx.BitwiseOrExpression(i))
+	val := v.Visit(ctx.EqualityExpression(0))
+	for i := 1; i < len(ctx.AllEqualityExpression()); i++ {
+		rhs := v.Visit(ctx.EqualityExpression(i))
 		lhsV, ok1 := val.(value.Value)
 		rhsV, ok2 := rhs.(value.Value)
 		if ok1 && ok2 {
 			val = v.currentBlock.NewAnd(lhsV, rhsV)
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitEqualityExpression(ctx *parser.EqualityExpressionContext) interface{} {
+	val := v.Visit(ctx.RelationalExpression(0))
+	for i := 1; i < ctx.GetChildCount(); i += 2 {
+		rhs := v.Visit(ctx.RelationalExpression((i + 1) / 2))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if !ok1 || !ok2 {
+			continue
+		}
+		lhsV, rhsV = v.castToMatch(lhsV, rhsV)
+		node := ctx.GetChild(i)
+		if token, ok := node.(antlr.TerminalNode); ok {
+			switch token.GetText() {
+			case "==":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredOEQ, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredEQ, lhsV, rhsV)
+				}
+			case "!=":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredONE, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredNE, lhsV, rhsV)
+				}
+			}
+		}
+	}
+	return val
+}
+
+func (v *IRVisitor) VisitRelationalExpression(ctx *parser.RelationalExpressionContext) interface{} {
+	val := v.Visit(ctx.BitwiseOrExpression(0))
+	for i := 1; i < ctx.GetChildCount(); i += 2 {
+		rhs := v.Visit(ctx.BitwiseOrExpression((i + 1) / 2))
+		lhsV, ok1 := val.(value.Value)
+		rhsV, ok2 := rhs.(value.Value)
+		if !ok1 || !ok2 {
+			continue
+		}
+		lhsV, rhsV = v.castToMatch(lhsV, rhsV)
+		node := ctx.GetChild(i)
+		if token, ok := node.(antlr.TerminalNode); ok {
+			switch token.GetText() {
+			case "<":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredOLT, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredSLT, lhsV, rhsV)
+				}
+			case "<=":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredOLE, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredSLE, lhsV, rhsV)
+				}
+			case ">":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredOGT, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredSGT, lhsV, rhsV)
+				}
+			case ">=":
+				switch lhsV.Type().(type) {
+				case *types.FloatType:
+					val = v.currentBlock.NewFCmp(enum.FPredOGE, lhsV, rhsV)
+				default:
+					val = v.currentBlock.NewICmp(enum.IPredSGE, lhsV, rhsV)
+				}
+			}
 		}
 	}
 	return val
@@ -314,17 +396,17 @@ func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext)
 					v.Errors = append(v.Errors, fmt.Errorf("attempt to call non-function value"))
 					return nil
 				}
-				argVal := v.Visit(ap)
-				args, _ := argVal.([]value.Value)
-				if fn.Name() == "printf" && len(args) > 0 {
-					formatStr := v.defineGlobalString("%s\n")
-					callArgs := []value.Value{formatStr}
-					callArgs = append(callArgs, args...)
-					currentVal = v.currentBlock.NewCall(fn, callArgs...)
+				var args []value.Value
+				if fn.Name() == "printf" {
+					if apc, ok := ap.(*parser.ArgumentPartContext); ok {
+						args = v.buildPrintArgs(apc)
+					}
 				} else {
-					currentVal = v.currentBlock.NewCall(fn, args...)
+					argVal := v.Visit(ap)
+					args, _ = argVal.([]value.Value)
 				}
-			} else if sel.LBRACKET() != nil && sel.Expression() != nil {
+			currentVal = v.currentBlock.NewCall(fn, args...)
+		} else if sel.LBRACKET() != nil && sel.Expression() != nil {
 				v.Visit(sel.Expression())
 			}
 		}
@@ -517,4 +599,93 @@ func (v *IRVisitor) ensurePowFunc() *ir.Func {
 		ir.NewParam("exp", types.Double))
 	v.funcs["pow"] = pow
 	return pow
+}
+
+func (v *IRVisitor) buildPrintArgs(ap *parser.ArgumentPartContext) []value.Value {
+	if ap.Arguments() == nil || ap.Arguments().ArgumentList() == nil {
+		return nil
+	}
+	al := ap.Arguments().ArgumentList()
+	if al.ExpressionList() == nil || len(al.ExpressionList().AllExpression()) == 0 {
+		return nil
+	}
+
+	firstExpr := al.ExpressionList().Expression(0)
+	exprText := firstExpr.GetText()
+
+	if isStringLiteral(exprText) && strings.Contains(exprText, "$") {
+		unquoted := stripQuotes(exprText)
+		return v.handleInterpolatedPrint(unquoted)
+	}
+
+	argVal := v.Visit(firstExpr)
+	if vv, ok := argVal.(value.Value); ok {
+		formatStr := v.defineGlobalString("%s\n")
+		return []value.Value{formatStr, vv}
+	}
+
+	return nil
+}
+
+func isStringLiteral(text string) bool {
+	return (strings.HasPrefix(text, "'") && strings.HasSuffix(text, "'")) ||
+		(strings.HasPrefix(text, "\"") && strings.HasSuffix(text, "\""))
+}
+
+func (v *IRVisitor) handleInterpolatedPrint(text string) []value.Value {
+	type part struct {
+		isVar bool
+		raw   string
+	}
+
+	var parts []part
+	for i := 0; i < len(text); i++ {
+		if text[i] == '$' && i+1 < len(text) && isIdentStart(text[i+1]) {
+			j := i + 1
+			for j < len(text) && isIdentPart(text[j]) {
+				j++
+			}
+			parts = append(parts, part{isVar: true, raw: text[i+1 : j]})
+			i = j - 1
+		} else {
+			j := i
+			for j < len(text) && text[j] != '$' {
+				j++
+			}
+			if j > i {
+				parts = append(parts, part{isVar: false, raw: text[i:j]})
+			}
+			i = j - 1
+		}
+	}
+
+	var formatBuf strings.Builder
+	var formatArgs []value.Value
+
+	for _, p := range parts {
+		if p.isVar {
+			if vi, ok := v.currentScope.Get(p.raw); ok {
+				val := v.currentBlock.NewLoad(vi.Type, vi.LLVMValue)
+				formatArgs = append(formatArgs, val)
+				formatBuf.WriteString("%lld")
+			} else {
+				v.Errors = append(v.Errors, fmt.Errorf("undefined variable in string interpolation: %s", p.raw))
+				formatBuf.WriteString(p.raw)
+			}
+		} else {
+			formatBuf.WriteString(p.raw)
+		}
+	}
+	formatBuf.WriteString("\n")
+
+	formatStr := v.defineGlobalString(formatBuf.String())
+	return append([]value.Value{formatStr}, formatArgs...)
+}
+
+func isIdentStart(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+}
+
+func isIdentPart(c byte) bool {
+	return isIdentStart(c) || (c >= '0' && c <= '9')
 }

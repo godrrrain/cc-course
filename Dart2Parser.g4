@@ -413,7 +413,15 @@ logicalOrExpression
     ;
 
 logicalAndExpression
-    : bitwiseOrExpression (AND bitwiseOrExpression)*
+    : equalityExpression (AND equalityExpression)*
+    ;
+
+equalityExpression
+    : relationalExpression ((EQ | NE) relationalExpression)*
+    ;
+
+relationalExpression
+    : bitwiseOrExpression ((LT | GT | LTE | GTE) bitwiseOrExpression)*
     ;
 
 bitwiseOrExpression

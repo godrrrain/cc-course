@@ -196,17 +196,39 @@ func (v *IRVisitor) VisitForStatement(ctx *parser.ForStatementContext) interface
 		return nil
 	}
 
-	loopHeader := v.currentFunc.NewBlock(v.freshLabel("for.header"))
+	v.enterScope()
+	defer v.exitScope()
+
+	parts := ctx.ForLoopParts()
+
+	// Initializer
+	if parts.VariableDeclaration() != nil {
+		v.Visit(parts.VariableDeclaration())
+	}
+
+	loopCond := v.currentFunc.NewBlock(v.freshLabel("for.cond"))
 	loopBody := v.currentFunc.NewBlock(v.freshLabel("for.body"))
 	loopStep := v.currentFunc.NewBlock(v.freshLabel("for.step"))
 	loopExit := v.currentFunc.NewBlock(v.freshLabel("for.exit"))
 
-	v.currentBlock.NewBr(loopHeader)
+	v.currentBlock.NewBr(loopCond)
 
-	v.pushBlock(loopHeader)
-	v.currentBlock.NewBr(loopBody)
+	// Condition block
+	v.pushBlock(loopCond)
+	if parts.Expression() != nil {
+		cond := v.Visit(parts.Expression())
+		condVal, ok := cond.(value.Value)
+		if !ok {
+			v.Errors = append(v.Errors, fmt.Errorf("invalid condition in for statement"))
+			return nil
+		}
+		v.currentBlock.NewCondBr(condVal, loopBody, loopExit)
+	} else {
+		v.currentBlock.NewBr(loopBody)
+	}
 	v.popBlock()
 
+	// Body block
 	v.pushBlock(loopBody)
 	v.currentScope.setMeta(loopExitVar, loopExit)
 	if ctx.Statement() != nil {
@@ -217,8 +239,14 @@ func (v *IRVisitor) VisitForStatement(ctx *parser.ForStatementContext) interface
 	}
 	v.popBlock()
 
+	// Step block (increment)
 	v.pushBlock(loopStep)
-	v.currentBlock.NewBr(loopHeader)
+	if parts.ExpressionList() != nil {
+		v.Visit(parts.ExpressionList())
+	}
+	if v.currentBlock.Term == nil {
+		v.currentBlock.NewBr(loopCond)
+	}
 	v.popBlock()
 
 	v.currentBlock = loopExit

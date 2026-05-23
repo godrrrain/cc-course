@@ -287,6 +287,14 @@ func (v *BaseDart2ParserVisitor) VisitLogicalAndExpression(ctx *LogicalAndExpres
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseDart2ParserVisitor) VisitEqualityExpression(ctx *EqualityExpressionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseDart2ParserVisitor) VisitRelationalExpression(ctx *RelationalExpressionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseDart2ParserVisitor) VisitBitwiseOrExpression(ctx *BitwiseOrExpressionContext) interface{} {
 	return v.VisitChildren(ctx)
 }
