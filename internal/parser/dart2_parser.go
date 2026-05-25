@@ -581,11 +581,11 @@ func dart2parserParserInit() {
 		50, 0, 825, 824, 1, 0, 0, 0, 826, 829, 1, 0, 0, 0, 827, 825, 1, 0, 0, 0,
 		827, 828, 1, 0, 0, 0, 828, 830, 1, 0, 0, 0, 829, 827, 1, 0, 0, 0, 830,
 		831, 3, 60, 30, 0, 831, 59, 1, 0, 0, 0, 832, 850, 3, 62, 31, 0, 833, 850,
-		3, 48, 24, 0, 834, 850, 3, 64, 32, 0, 835, 850, 3, 66, 33, 0, 836, 850,
-		3, 70, 35, 0, 837, 850, 3, 72, 36, 0, 838, 850, 3, 74, 37, 0, 839, 850,
-		3, 80, 40, 0, 840, 850, 3, 86, 43, 0, 841, 850, 3, 88, 44, 0, 842, 850,
-		3, 90, 45, 0, 843, 850, 3, 92, 46, 0, 844, 850, 3, 94, 47, 0, 845, 850,
-		3, 96, 48, 0, 846, 850, 3, 98, 49, 0, 847, 850, 3, 102, 51, 0, 848, 850,
+		3, 96, 48, 0, 834, 850, 3, 48, 24, 0, 835, 850, 3, 64, 32, 0, 836, 850,
+		3, 66, 33, 0, 837, 850, 3, 70, 35, 0, 838, 850, 3, 72, 36, 0, 839, 850,
+		3, 74, 37, 0, 840, 850, 3, 80, 40, 0, 841, 850, 3, 86, 43, 0, 842, 850,
+		3, 88, 44, 0, 843, 850, 3, 90, 45, 0, 844, 850, 3, 92, 46, 0, 845, 850,
+		3, 94, 47, 0, 846, 850, 3, 98, 49, 0, 847, 850, 3, 102, 51, 0, 848, 850,
 		3, 104, 52, 0, 849, 832, 1, 0, 0, 0, 849, 833, 1, 0, 0, 0, 849, 834, 1,
 		0, 0, 0, 849, 835, 1, 0, 0, 0, 849, 836, 1, 0, 0, 0, 849, 837, 1, 0, 0,
 		0, 849, 838, 1, 0, 0, 0, 849, 839, 1, 0, 0, 0, 849, 840, 1, 0, 0, 0, 849,
@@ -9110,6 +9110,7 @@ type INonLabelledStatementContext interface {
 
 	// Getter signatures
 	Block() IBlockContext
+	ExpressionStatement() IExpressionStatementContext
 	VariableDeclaration() IVariableDeclarationContext
 	IfStatement() IIfStatementContext
 	ForStatement() IForStatementContext
@@ -9122,7 +9123,6 @@ type INonLabelledStatementContext interface {
 	ReturnStatement() IReturnStatementContext
 	YieldStatement() IYieldStatementContext
 	YieldEachStatement() IYieldEachStatementContext
-	ExpressionStatement() IExpressionStatementContext
 	AssertStatement() IAssertStatementContext
 	LocalFunctionDeclaration() ILocalFunctionDeclarationContext
 	RethrowStatement() IRethrowStatementContext
@@ -9177,6 +9177,22 @@ func (s *NonLabelledStatementContext) Block() IBlockContext {
 	}
 
 	return t.(IBlockContext)
+}
+
+func (s *NonLabelledStatementContext) ExpressionStatement() IExpressionStatementContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IExpressionStatementContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IExpressionStatementContext)
 }
 
 func (s *NonLabelledStatementContext) VariableDeclaration() IVariableDeclarationContext {
@@ -9371,22 +9387,6 @@ func (s *NonLabelledStatementContext) YieldEachStatement() IYieldEachStatementCo
 	return t.(IYieldEachStatementContext)
 }
 
-func (s *NonLabelledStatementContext) ExpressionStatement() IExpressionStatementContext {
-	var t antlr.RuleContext
-	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(IExpressionStatementContext); ok {
-			t = ctx.(antlr.RuleContext)
-			break
-		}
-	}
-
-	if t == nil {
-		return nil
-	}
-
-	return t.(IExpressionStatementContext)
-}
-
 func (s *NonLabelledStatementContext) AssertStatement() IAssertStatementContext {
 	var t antlr.RuleContext
 	for _, ctx := range s.GetChildren() {
@@ -9486,91 +9486,91 @@ func (p *Dart2Parser) NonLabelledStatement() (localctx INonLabelledStatementCont
 		p.EnterOuterAlt(localctx, 2)
 		{
 			p.SetState(833)
-			p.VariableDeclaration()
+			p.ExpressionStatement()
 		}
 
 	case 3:
 		p.EnterOuterAlt(localctx, 3)
 		{
 			p.SetState(834)
-			p.IfStatement()
+			p.VariableDeclaration()
 		}
 
 	case 4:
 		p.EnterOuterAlt(localctx, 4)
 		{
 			p.SetState(835)
-			p.ForStatement()
+			p.IfStatement()
 		}
 
 	case 5:
 		p.EnterOuterAlt(localctx, 5)
 		{
 			p.SetState(836)
-			p.WhileStatement()
+			p.ForStatement()
 		}
 
 	case 6:
 		p.EnterOuterAlt(localctx, 6)
 		{
 			p.SetState(837)
-			p.DoStatement()
+			p.WhileStatement()
 		}
 
 	case 7:
 		p.EnterOuterAlt(localctx, 7)
 		{
 			p.SetState(838)
-			p.SwitchStatement()
+			p.DoStatement()
 		}
 
 	case 8:
 		p.EnterOuterAlt(localctx, 8)
 		{
 			p.SetState(839)
-			p.TryStatement()
+			p.SwitchStatement()
 		}
 
 	case 9:
 		p.EnterOuterAlt(localctx, 9)
 		{
 			p.SetState(840)
-			p.BreakStatement()
+			p.TryStatement()
 		}
 
 	case 10:
 		p.EnterOuterAlt(localctx, 10)
 		{
 			p.SetState(841)
-			p.ContinueStatement()
+			p.BreakStatement()
 		}
 
 	case 11:
 		p.EnterOuterAlt(localctx, 11)
 		{
 			p.SetState(842)
-			p.ReturnStatement()
+			p.ContinueStatement()
 		}
 
 	case 12:
 		p.EnterOuterAlt(localctx, 12)
 		{
 			p.SetState(843)
-			p.YieldStatement()
+			p.ReturnStatement()
 		}
 
 	case 13:
 		p.EnterOuterAlt(localctx, 13)
 		{
 			p.SetState(844)
-			p.YieldEachStatement()
+			p.YieldStatement()
 		}
 
 	case 14:
 		p.EnterOuterAlt(localctx, 14)
 		{
 			p.SetState(845)
-			p.ExpressionStatement()
+			p.YieldEachStatement()
 		}
 
 	case 15:

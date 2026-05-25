@@ -205,7 +205,13 @@ func (v *IRVisitor) VisitConstructorDesignation(ctx *parser.ConstructorDesignati
 }
 
 func (v *IRVisitor) VisitTypeNotFunction(ctx *parser.TypeNotFunctionContext) interface{} {
-	return nil
+	if ctx.VOID_() != nil {
+		return types.Void
+	}
+	if ctx.TypeNotVoidNotFunction() != nil {
+		return v.Visit(ctx.TypeNotVoidNotFunction())
+	}
+	return types.I64
 }
 
 func (v *IRVisitor) VisitTypeIdentifier(ctx *parser.TypeIdentifierContext) interface{} {

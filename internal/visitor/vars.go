@@ -21,7 +21,18 @@ func (v *IRVisitor) VisitVariableDeclarationItem(ctx *parser.VariableDeclaration
 	}
 
 	name := ctx.IDENTIFIER().GetText()
+
+	var initVal value.Value
+	if ctx.Expression() != nil {
+		if val, ok := v.Visit(ctx.Expression()).(value.Value); ok {
+			initVal = val
+		}
+	}
+
 	var typ types.Type = types.I64
+	if initVal != nil {
+		typ = initVal.Type()
+	}
 
 	alloca := v.currentBlock.NewAlloca(typ)
 	vi := &VariableInfo{
@@ -34,10 +45,8 @@ func (v *IRVisitor) VisitVariableDeclarationItem(ctx *parser.VariableDeclaration
 		v.Errors = append(v.Errors, fmt.Errorf("variable %s already declared: %v", name, err))
 	}
 
-	if ctx.Expression() != nil {
-		if initVal, ok := v.Visit(ctx.Expression()).(value.Value); ok {
-			v.currentBlock.NewStore(initVal, alloca)
-		}
+	if initVal != nil {
+		v.currentBlock.NewStore(initVal, alloca)
 	}
 
 	return vi

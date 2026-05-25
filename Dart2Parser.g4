@@ -211,6 +211,7 @@ statement
 
 nonLabelledStatement
     : block
+    | expressionStatement
     | variableDeclaration
     | ifStatement
     | forStatement
@@ -223,7 +224,6 @@ nonLabelledStatement
     | returnStatement
     | yieldStatement
     | yieldEachStatement
-    | expressionStatement
     | assertStatement
     | localFunctionDeclaration
     | rethrowStatement

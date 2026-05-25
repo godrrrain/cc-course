@@ -2,7 +2,6 @@ package visitor
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir"
@@ -19,17 +18,16 @@ type IRVisitor struct {
 	Errors []error
 	Module *ir.Module
 
-	currentFunc      *ir.Func
-	currentScope     *Scope
-	currentBlock     *ir.Block
-	blockStack       []*ir.Block
-	funcs            map[string]*ir.Func
-	mainOriginalName string
+	currentFunc  *ir.Func
+	currentScope *Scope
+	currentBlock *ir.Block
+	blockStack   []*ir.Block
+	funcs        map[string]*ir.Func
 }
 
 func NewIRVisitor() *IRVisitor {
 	module := ir.NewModule()
-	module.TargetTriple = runtimeLLVMTriple()
+	module.TargetTriple = "x86_64-pc-windows-msvc19.39.33523"
 
 	v := &IRVisitor{
 		BaseDart2ParserVisitor: &parser.BaseDart2ParserVisitor{},
@@ -55,18 +53,6 @@ func (v *IRVisitor) registerBuiltins() {
 	v.funcs["print"] = printf
 }
 
-func runtimeLLVMTriple() string {
-	arch := map[string]string{"arm64": "arm64", "amd64": "x86_64"}[runtime.GOARCH]
-	os := map[string]string{"darwin": "apple-macosx14.0.0", "linux": "pc-linux-gnu"}[runtime.GOOS]
-	if arch == "" {
-		arch = "x86_64"
-	}
-	if os == "" {
-		os = "pc-linux-gnu"
-	}
-	return arch + "-" + os
-}
-
 func (v *IRVisitor) GetModule() *ir.Module {
 	return v.Module
 }
@@ -76,6 +62,15 @@ func (v *IRVisitor) Visit(tree antlr.ParseTree) interface{} {
 }
 
 func (v *IRVisitor) VisitCompilationUnit(ctx *parser.CompilationUnitContext) interface{} {
+	// First pass: declare all function prototypes (for recursive calls)
+	for _, item := range ctx.AllTopLevelItem() {
+		if item.TopLevelDeclaration() != nil &&
+			item.TopLevelDeclaration().FunctionDeclaration() != nil {
+			v.declareFunctionPrototype(item.TopLevelDeclaration().FunctionDeclaration())
+		}
+	}
+
+	// Second pass: visit all top-level items
 	v.enterScope()
 	defer v.exitScope()
 
@@ -176,12 +171,6 @@ func (v *IRVisitor) VisitFunctionDeclaration(ctx *parser.FunctionDeclarationCont
 	}
 
 	funcName := ctx.IDENTIFIER().GetText()
-	llvmFuncName := funcName
-
-	if v.mainOriginalName == "" {
-		v.mainOriginalName = llvmFuncName
-		llvmFuncName = "main"
-	}
 
 	var retType types.Type = types.Void
 	if ctx.ReturnType() != nil {
@@ -192,7 +181,7 @@ func (v *IRVisitor) VisitFunctionDeclaration(ctx *parser.FunctionDeclarationCont
 		}
 	}
 
-	if llvmFuncName == "main" {
+	if funcName == "main" {
 		retType = types.I32
 	}
 
@@ -207,10 +196,10 @@ func (v *IRVisitor) VisitFunctionDeclaration(ctx *parser.FunctionDeclarationCont
 		}
 	}
 
-	fn, exists := v.funcs[llvmFuncName]
+	fn, exists := v.funcs[funcName]
 	if !exists {
-		fn = v.Module.NewFunc(llvmFuncName, retType, irParams...)
-		v.funcs[llvmFuncName] = fn
+		fn = v.Module.NewFunc(funcName, retType, irParams...)
+		v.funcs[funcName] = fn
 	} else if len(fn.Blocks) > 0 {
 		return nil
 	}
@@ -366,20 +355,14 @@ func (v *IRVisitor) VisitVariableDeclaration(ctx *parser.VariableDeclarationCont
 	return nil
 }
 
-func (v *IRVisitor) declareFunctionPrototype(ctx *parser.FunctionDeclarationContext) {
+func (v *IRVisitor) declareFunctionPrototype(ctx parser.IFunctionDeclarationContext) {
 	if ctx.IDENTIFIER() == nil {
 		return
 	}
 
 	funcName := ctx.IDENTIFIER().GetText()
-	llvmFuncName := funcName
 
-	if v.mainOriginalName == "" {
-		v.mainOriginalName = llvmFuncName
-		llvmFuncName = "main"
-	}
-
-	if _, exists := v.funcs[llvmFuncName]; exists {
+	if _, exists := v.funcs[funcName]; exists {
 		return
 	}
 
@@ -392,12 +375,23 @@ func (v *IRVisitor) declareFunctionPrototype(ctx *parser.FunctionDeclarationCont
 		}
 	}
 
-	if llvmFuncName == "main" {
+	if funcName == "main" {
 		retType = types.I32
 	}
 
-	fn := v.Module.NewFunc(llvmFuncName, retType)
-	v.funcs[llvmFuncName] = fn
+	var irParams []*ir.Param
+	if fpl := ctx.FormalParameterList(); fpl != nil {
+		if params := v.Visit(fpl); params != nil {
+			if paramInfos, ok := params.([]*VariableInfo); ok {
+				for _, p := range paramInfos {
+					irParams = append(irParams, ir.NewParam(p.Name, p.Type))
+				}
+			}
+		}
+	}
+
+	fn := v.Module.NewFunc(funcName, retType, irParams...)
+	v.funcs[funcName] = fn
 }
 
 func (v *IRVisitor) newBlock(label string) *ir.Block {

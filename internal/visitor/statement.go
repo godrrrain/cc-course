@@ -5,6 +5,9 @@ import (
 
 	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
+	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 )
 
@@ -196,12 +199,17 @@ func (v *IRVisitor) VisitForStatement(ctx *parser.ForStatementContext) interface
 		return nil
 	}
 
+	parts := ctx.ForLoopParts()
+
+	// For-in loop: for (int num in numbers)
+	if parts.IN_() != nil {
+		return v.handleForInLoop(parts, ctx.Statement())
+	}
+
 	v.enterScope()
 	defer v.exitScope()
 
-	parts := ctx.ForLoopParts()
-
-	// Initializer
+	// C-style for loop
 	if parts.VariableDeclaration() != nil {
 		v.Visit(parts.VariableDeclaration())
 	}
@@ -252,6 +260,95 @@ func (v *IRVisitor) VisitForStatement(ctx *parser.ForStatementContext) interface
 	v.currentBlock = loopExit
 	return nil
 }
+
+func (v *IRVisitor) handleForInLoop(parts parser.IForLoopPartsContext, body parser.IStatementContext) interface{} {
+	v.enterScope()
+	defer v.exitScope()
+
+	varName := parts.IDENTIFIER().GetText()
+
+	// Determine loop variable type
+	var loopTyp types.Type = types.I64
+	if parts.Type_() != nil {
+		if t := v.Visit(parts.Type_()); t != nil {
+			if tt, ok := t.(types.Type); ok {
+				loopTyp = tt
+			}
+		}
+	}
+
+	// Evaluate iterable expression
+	iterVal := v.Visit(parts.Expression())
+	listVal, ok := iterVal.(value.Value)
+	if !ok {
+		v.Errors = append(v.Errors, fmt.Errorf("invalid iterable in for-in loop"))
+		return nil
+	}
+
+	// Extract length and data pointer from the list struct
+	lenVal := v.currentBlock.NewExtractValue(listVal, 0)
+	dataPtrVal := v.currentBlock.NewExtractValue(listVal, 1)
+
+	// Create loop variable alloca
+	varAlloca := v.currentBlock.NewAlloca(loopTyp)
+	_ = v.currentScope.Set(varName, &VariableInfo{
+		Name:      varName,
+		Type:      loopTyp,
+		LLVMValue: varAlloca,
+	})
+
+	// Create index variable
+	idxAlloca := v.currentBlock.NewAlloca(types.I64)
+	zero := constant.NewInt(types.I64, 0)
+	v.currentBlock.NewStore(zero, idxAlloca)
+
+	// Create blocks
+	loopCond := v.currentFunc.NewBlock(v.freshLabel("forin.cond"))
+	loopBody := v.currentFunc.NewBlock(v.freshLabel("forin.body"))
+	loopStep := v.currentFunc.NewBlock(v.freshLabel("forin.step"))
+	loopExit := v.currentFunc.NewBlock(v.freshLabel("forin.exit"))
+
+	v.currentBlock.NewBr(loopCond)
+
+	// Condition block
+	v.pushBlock(loopCond)
+	idxLoad := v.currentBlock.NewLoad(types.I64, idxAlloca)
+	cond := v.currentBlock.NewICmp(enum.IPredSLT, idxLoad, lenVal)
+	v.currentBlock.NewCondBr(cond, loopBody, loopExit)
+	v.popBlock()
+
+	// Body block
+	v.pushBlock(loopBody)
+	v.currentScope.setMeta(loopExitVar, loopExit)
+
+	// Load list[i] and store into loop variable
+	curIdx := v.currentBlock.NewLoad(types.I64, idxAlloca)
+	elemPtr := v.currentBlock.NewGetElementPtr(types.I64, dataPtrVal, curIdx)
+	elemVal := v.currentBlock.NewLoad(types.I64, elemPtr)
+	v.currentBlock.NewStore(elemVal, varAlloca)
+
+	if body != nil {
+		v.Visit(body)
+	}
+	if v.currentBlock.Term == nil {
+		v.currentBlock.NewBr(loopStep)
+	}
+	v.popBlock()
+
+	// Step block
+	v.pushBlock(loopStep)
+	stepIdx := v.currentBlock.NewLoad(types.I64, idxAlloca)
+	nextIdx := v.currentBlock.NewAdd(constant.NewInt(types.I64, 1), stepIdx)
+	v.currentBlock.NewStore(nextIdx, idxAlloca)
+	if v.currentBlock.Term == nil {
+		v.currentBlock.NewBr(loopCond)
+	}
+	v.popBlock()
+
+	v.currentBlock = loopExit
+	return nil
+}
+
 
 func (v *IRVisitor) VisitSwitchStatement(ctx *parser.SwitchStatementContext) interface{} {
 	if ctx.Expression() == nil {

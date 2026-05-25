@@ -17,9 +17,24 @@ import (
 func (v *IRVisitor) VisitExpression(ctx *parser.ExpressionContext) interface{} {
 	switch {
 	case ctx.AssignableExpression() != nil && ctx.AssignmentOperator() != nil:
-		if ae, ok := ctx.AssignableExpression().(*parser.AssignableExpressionContext); ok {
-			return v.VisitAssignableExpression(ae)
+		rhs := v.Visit(ctx.Expression())
+		rv, rvOk := rhs.(value.Value)
+		if !rvOk {
+			return nil
 		}
+		if ae, ok := ctx.AssignableExpression().(*parser.AssignableExpressionContext); ok {
+			if ae.IDENTIFIER() != nil {
+				name := ae.IDENTIFIER().GetText()
+				if vi, ok := v.currentScope.Get(name); ok {
+					v.currentBlock.NewStore(rv, vi.LLVMValue)
+				} else {
+					v.Errors = append(v.Errors, fmt.Errorf("undefined variable: %s", name))
+				}
+			} else if ae.Primary() != nil {
+				v.Visit(ctx.AssignableExpression())
+			}
+		}
+		return rv
 	case ctx.ConditionalExpression() != nil:
 		return v.Visit(ctx.ConditionalExpression())
 	case ctx.ThrowExpression() != nil:
@@ -501,8 +516,48 @@ func (v *IRVisitor) VisitStringLiteral(ctx *parser.StringLiteralContext) interfa
 }
 
 func (v *IRVisitor) VisitListLiteral(ctx *parser.ListLiteralContext) interface{} {
-	v.Errors = append(v.Errors, fmt.Errorf("list literals not yet implemented"))
-	return nil
+	listTy := types.NewStruct(types.I64, types.NewPointer(types.I64))
+	zero := constant.NewInt(types.I64, 0)
+
+	if ctx.Elements() == nil {
+		alloc := v.currentBlock.NewAlloca(listTy)
+		nullPtr := constant.NewNull(types.NewPointer(types.I64))
+		val := constant.NewZeroInitializer(listTy)
+		withLen := constant.NewInsertValue(val, zero, 0)
+		withPtr := constant.NewInsertValue(withLen, nullPtr, 1)
+		v.currentBlock.NewStore(withPtr, alloc)
+		return v.currentBlock.NewLoad(listTy, alloc)
+	}
+
+	var elemVals []value.Value
+	for _, el := range ctx.Elements().AllElement() {
+		if el.ExpressionElement() != nil {
+			if vv := v.Visit(el.ExpressionElement().Expression()); vv != nil {
+				if val, ok := vv.(value.Value); ok {
+					elemVals = append(elemVals, val)
+				}
+			}
+		}
+	}
+
+	count := int64(len(elemVals))
+	arrTy := types.NewArray(uint64(count), types.I64)
+	arrAlloc := v.currentBlock.NewAlloca(arrTy)
+
+	for i, ev := range elemVals {
+		idx := constant.NewInt(types.I64, int64(i))
+		ptr := v.currentBlock.NewGetElementPtr(arrTy, arrAlloc, zero, idx)
+		v.currentBlock.NewStore(ev, ptr)
+	}
+
+	firstPtr := v.currentBlock.NewGetElementPtr(arrTy, arrAlloc, zero, zero)
+
+	listAlloc := v.currentBlock.NewAlloca(listTy)
+	inserted := v.currentBlock.NewInsertValue(constant.NewZeroInitializer(listTy), constant.NewInt(types.I64, count), 0)
+	inserted = v.currentBlock.NewInsertValue(inserted, firstPtr, 1)
+	v.currentBlock.NewStore(inserted, listAlloc)
+
+	return v.currentBlock.NewLoad(listTy, listAlloc)
 }
 
 func (v *IRVisitor) VisitSetOrMapLiteral(ctx *parser.SetOrMapLiteralContext) interface{} {
