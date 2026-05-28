@@ -51,6 +51,10 @@ func (v *IRVisitor) registerBuiltins() {
 	printf.Sig.Variadic = true
 	v.funcs["printf"] = printf
 	v.funcs["print"] = printf
+
+	system := v.Module.NewFunc("system", types.I32,
+		ir.NewParam("command", types.NewPointer(types.I8)))
+	v.funcs["system"] = system
 }
 
 func (v *IRVisitor) GetModule() *ir.Module {
@@ -233,6 +237,13 @@ func (v *IRVisitor) VisitFunctionDeclaration(ctx *parser.FunctionDeclarationCont
 						_ = v.currentScope.Set(pInfo.Name, pInfo)
 					}
 				}
+			}
+		}
+
+		if funcName == "main" {
+			if systemFn, ok := v.funcs["system"]; ok {
+				cmd := v.defineGlobalString("chcp 65001 > nul")
+				v.currentBlock.NewCall(systemFn, cmd)
 			}
 		}
 

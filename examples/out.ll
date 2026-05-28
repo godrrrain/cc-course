@@ -1,67 +1,54 @@
 target triple = "x86_64-pc-windows-msvc19.39.33523"
 
-@.str.literal.0 = constant [11 x i8] c"Sum: %lld\0A\00"
+@.str.literal.0 = constant [17 x i8] c"chcp 65001 > nul\00"
+@.str.literal.1 = constant [22 x i8] c"Fibonacci(10) = %lld\0A\00"
 
 declare i32 @printf(i8* %format, ...)
+
+declare i32 @system(i8* %command)
+
+define i64 @fibonacci(i64 %n) {
+entry:
+	%0 = alloca i64
+	%1 = alloca i64
+	store i64 %n, i64* %1
+	%2 = load i64, i64* %1
+	%3 = icmp sle i64 %2, 1
+	br i1 %3, label %if.then.1, label %if.end.2
+
+if.then.1:
+	%4 = load i64, i64* %1
+	ret i64 %4
+
+if.end.2:
+	%5 = load i64, i64* %1
+	%6 = sub i64 %5, 1
+	%7 = call i64 @fibonacci(i64 %6)
+	%8 = load i64, i64* %1
+	%9 = sub i64 %8, 2
+	%10 = call i64 @fibonacci(i64 %9)
+	%11 = add i64 %7, %10
+	ret i64 %11
+
+unreachable.3:
+	br label %if.end.2
+
+unreachable.4:
+	%12 = load i64, i64* %0
+	ret i64 %12
+}
 
 define i32 @main() {
 entry:
 	%0 = alloca i32
-	%1 = alloca [5 x i64]
-	%2 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 0
-	store i64 1, i64* %2
-	%3 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 1
-	store i64 2, i64* %3
-	%4 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 2
-	store i64 3, i64* %4
-	%5 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 3
-	store i64 4, i64* %5
-	%6 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 4
-	store i64 5, i64* %6
-	%7 = getelementptr [5 x i64], [5 x i64]* %1, i64 0, i64 0
-	%8 = alloca { i64, i64* }
-	%9 = insertvalue { i64, i64* } zeroinitializer, i64 5, 0
-	%10 = insertvalue { i64, i64* } %9, i64* %7, 1
-	store { i64, i64* } %10, { i64, i64* }* %8
-	%11 = load { i64, i64* }, { i64, i64* }* %8
-	%12 = alloca { i64, i64* }
-	store { i64, i64* } %11, { i64, i64* }* %12
-	%13 = alloca i64
-	store i64 0, i64* %13
-	%14 = load { i64, i64* }, { i64, i64* }* %12
-	%15 = extractvalue { i64, i64* } %14, 0
-	%16 = extractvalue { i64, i64* } %14, 1
-	%17 = alloca i64
-	%18 = alloca i64
-	store i64 0, i64* %18
-	br label %forin.cond.1
-
-forin.cond.1:
-	%19 = load i64, i64* %18
-	%20 = icmp slt i64 %19, %15
-	br i1 %20, label %forin.body.2, label %forin.exit.4
-
-forin.body.2:
-	%21 = load i64, i64* %18
-	%22 = getelementptr i64, i64* %16, i64 %21
-	%23 = load i64, i64* %22
-	store i64 %23, i64* %17
-	%24 = load i64, i64* %13
-	%25 = load i64, i64* %17
-	%26 = add i64 %24, %25
-	store i64 %26, i64* %13
-	br label %forin.step.3
-
-forin.step.3:
-	%27 = load i64, i64* %18
-	%28 = add i64 1, %27
-	store i64 %28, i64* %18
-	br label %forin.cond.1
-
-forin.exit.4:
-	%29 = load i64, i64* %13
-	%30 = getelementptr [11 x i8], [11 x i8]* @.str.literal.0, i32 0, i32 0
-	%31 = call i32 (i8*, ...) @printf(i8* %30, i64 %29)
-	%32 = load i32, i32* %0
-	ret i32 %32
+	%1 = getelementptr [17 x i8], [17 x i8]* @.str.literal.0, i32 0, i32 0
+	%2 = call i32 @system(i8* %1)
+	%3 = call i64 @fibonacci(i64 10)
+	%4 = alloca i64
+	store i64 %3, i64* %4
+	%5 = load i64, i64* %4
+	%6 = getelementptr [22 x i8], [22 x i8]* @.str.literal.1, i32 0, i32 0
+	%7 = call i32 (i8*, ...) @printf(i8* %6, i64 %5)
+	%8 = load i32, i32* %0
+	ret i32 %8
 }

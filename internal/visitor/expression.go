@@ -23,15 +23,47 @@ func (v *IRVisitor) VisitExpression(ctx *parser.ExpressionContext) interface{} {
 			return nil
 		}
 		if ae, ok := ctx.AssignableExpression().(*parser.AssignableExpressionContext); ok {
-			if ae.IDENTIFIER() != nil {
+			if ae.SUPER_() != nil {
+			} else if ae.Primary() != nil {
+				asp := ae.AssignableSelectorPart()
+				if asp == nil {
+					v.Errors = append(v.Errors, fmt.Errorf("expected assignable selector part"))
+					return rv
+				}
+				assignSel := asp.AssignableSelector()
+				if assignSel == nil {
+					v.Errors = append(v.Errors, fmt.Errorf("expected assignable selector"))
+					return rv
+				}
+				if uas := assignSel.UnconditionalAssignableSelector(); uas != nil {
+					if uas.LBRACKET() != nil && uas.Expression() != nil {
+						listVal, ok := v.Visit(ae.Primary()).(value.Value)
+						if !ok {
+							v.Errors = append(v.Errors, fmt.Errorf("invalid list in indexed assignment"))
+							return rv
+						}
+						dataPtr := v.currentBlock.NewExtractValue(listVal, 1)
+						idxVal := v.Visit(uas.Expression())
+						idx, ok := idxVal.(value.Value)
+						if !ok {
+							v.Errors = append(v.Errors, fmt.Errorf("invalid index expression"))
+							return rv
+						}
+						elemPtr := v.currentBlock.NewGetElementPtr(types.I64, dataPtr, idx)
+						v.currentBlock.NewStore(rv, elemPtr)
+					} else if uas.DOT() != nil && uas.IDENTIFIER() != nil {
+						v.Errors = append(v.Errors, fmt.Errorf("property assignment not yet implemented"))
+					}
+				} else {
+					v.Errors = append(v.Errors, fmt.Errorf("unsupported assignable selector"))
+				}
+			} else {
 				name := ae.IDENTIFIER().GetText()
 				if vi, ok := v.currentScope.Get(name); ok {
 					v.currentBlock.NewStore(rv, vi.LLVMValue)
 				} else {
 					v.Errors = append(v.Errors, fmt.Errorf("undefined variable: %s", name))
 				}
-			} else if ae.Primary() != nil {
-				v.Visit(ctx.AssignableExpression())
 			}
 		}
 		return rv
@@ -421,8 +453,21 @@ func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext)
 					args, _ = argVal.([]value.Value)
 				}
 			currentVal = v.currentBlock.NewCall(fn, args...)
-		} else if sel.LBRACKET() != nil && sel.Expression() != nil {
-				v.Visit(sel.Expression())
+			} else if sel.LBRACKET() != nil && sel.Expression() != nil {
+				sv, svOk := currentVal.(value.Value)
+				if !svOk {
+					v.Errors = append(v.Errors, fmt.Errorf("invalid list value"))
+					return nil
+				}
+				idxVal := v.Visit(sel.Expression())
+				idx, ok := idxVal.(value.Value)
+				if !ok {
+					v.Errors = append(v.Errors, fmt.Errorf("invalid list index"))
+					return nil
+				}
+				dataPtr := v.currentBlock.NewExtractValue(sv, 1)
+				elemPtr := v.currentBlock.NewGetElementPtr(types.I64, dataPtr, idx)
+				currentVal = v.currentBlock.NewLoad(types.I64, elemPtr)
 			}
 		}
 		return currentVal
@@ -675,7 +720,16 @@ func (v *IRVisitor) buildPrintArgs(ap *parser.ArgumentPartContext) []value.Value
 
 	argVal := v.Visit(firstExpr)
 	if vv, ok := argVal.(value.Value); ok {
-		formatStr := v.defineGlobalString("%s\n")
+		var fmtStr string
+		switch vv.Type().(type) {
+		case *types.IntType:
+			fmtStr = "%lld\n"
+		case *types.FloatType:
+			fmtStr = "%f\n"
+		default:
+			fmtStr = "%s\n"
+		}
+		formatStr := v.defineGlobalString(fmtStr)
 		return []value.Value{formatStr, vv}
 	}
 

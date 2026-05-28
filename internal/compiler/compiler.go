@@ -11,7 +11,7 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 )
 
-func Compiler(input, output string, isDOT bool) error {
+func Compiler(input, output string) error {
 	fileStream, err := antlr.NewFileStream(input)
 	if err != nil {
 		return fmt.Errorf("compiler input error: %w", err)
@@ -29,11 +29,9 @@ func Compiler(input, output string, isDOT bool) error {
 
 	tree := p.CompilationUnit()
 
-	if isDOT {
-		err := ast.SaveTreeToFile(tree, p, output)
-		if err != nil {
-			return fmt.Errorf("ast build error: %w", err)
-		}
+	err = ast.SaveTreeToFile(tree, p, output)
+	if err != nil {
+		return fmt.Errorf("ast build error: %w", err)
 	}
 
 	v := visitor.NewIRVisitor()
@@ -59,11 +57,6 @@ func Compiler(input, output string, isDOT bool) error {
 	}
 
 	return nil
-}
-
-type customErrorListener struct {
-	*antlr.DefaultErrorListener
-	IsError bool
 }
 
 type dartErrorListener struct {

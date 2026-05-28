@@ -1,4 +1,3 @@
-// Function example in Dart
 int fibonacci(int n) {
   if (n <= 1) {
     return n;
