@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
-	ast "github.com/AskaryanKarine/BMSTU-CC/cource/internal/tree"
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/visitor"
 	"github.com/antlr4-go/antlr/v4"
+
+	"cc-course/internal/parser"
+	ast "cc-course/internal/tree"
+	"cc-course/internal/visitor"
 )
 
 func Compiler(input, output string) error {

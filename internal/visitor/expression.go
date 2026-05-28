@@ -5,13 +5,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
+
+	"cc-course/internal/parser"
 )
 
 func (v *IRVisitor) VisitExpression(ctx *parser.ExpressionContext) interface{} {
@@ -452,7 +453,7 @@ func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext)
 					argVal := v.Visit(ap)
 					args, _ = argVal.([]value.Value)
 				}
-			currentVal = v.currentBlock.NewCall(fn, args...)
+				currentVal = v.currentBlock.NewCall(fn, args...)
 			} else if sel.LBRACKET() != nil && sel.Expression() != nil {
 				sv, svOk := currentVal.(value.Value)
 				if !svOk {

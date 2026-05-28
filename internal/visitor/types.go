@@ -1,8 +1,9 @@
 package visitor
 
 import (
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir/types"
+
+	"cc-course/internal/parser"
 )
 
 func (v *IRVisitor) VisitType(ctx *parser.TypeContext) interface{} {

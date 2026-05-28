@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/compiler"
+	"cc-course/internal/compiler"
 )
 
 var (
-	input  = flag.String("i", "examples/reverse_array.dart", "source .dart file")
+	input  = flag.String("i", "examples/array.dart", "source .dart file")
 	output = flag.String("o", "examples/out", "executable program")
 )
 

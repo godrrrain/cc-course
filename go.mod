@@ -1,4 +1,4 @@
-module github.com/AskaryanKarine/BMSTU-CC/cource
+module cc-course
 
 go 1.24.2
 

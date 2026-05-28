@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
+
+	"cc-course/internal/parser"
 )
 
 func (v *IRVisitor) defineGlobalString(s string) value.Value {

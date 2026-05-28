@@ -1,0 +1,1 @@
+antlr4 -Dlanguage=Go Dart2Lexer.g4 Dart2Parser.g4 -visitor -o internal/parser -package parser

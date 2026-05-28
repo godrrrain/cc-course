@@ -3,13 +3,13 @@ package visitor
 import (
 	"fmt"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
+	"github.com/antlr4-go/antlr/v4"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 
-	"github.com/antlr4-go/antlr/v4"
+	"cc-course/internal/parser"
 )
 
 type IRVisitor struct {
@@ -219,6 +219,16 @@ func (v *IRVisitor) VisitFunctionDeclaration(ctx *parser.FunctionDeclarationCont
 
 		if !types.Equal(fn.Sig.RetType, types.Void) {
 			retAlloca := entry.NewAlloca(fn.Sig.RetType)
+			var zeroVal value.Value
+			switch t := fn.Sig.RetType.(type) {
+			case *types.IntType:
+				zeroVal = constant.NewInt(t, 0)
+			case *types.FloatType:
+				zeroVal = constant.NewFloat(t, 0)
+			default:
+				zeroVal = constant.NewZeroInitializer(t)
+			}
+			entry.NewStore(zeroVal, retAlloca)
 			_ = v.currentScope.Set(returnNameVar, &VariableInfo{
 				Name:      returnNameVar,
 				Type:      fn.Sig.RetType,

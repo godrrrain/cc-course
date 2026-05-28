@@ -3,12 +3,13 @@ package visitor
 import (
 	"fmt"
 
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
+
+	"cc-course/internal/parser"
 )
 
 func (v *IRVisitor) VisitStatements(ctx *parser.StatementsContext) interface{} {
@@ -348,7 +349,6 @@ func (v *IRVisitor) handleForInLoop(parts parser.IForLoopPartsContext, body pars
 	v.currentBlock = loopExit
 	return nil
 }
-
 
 func (v *IRVisitor) VisitSwitchStatement(ctx *parser.SwitchStatementContext) interface{} {
 	if ctx.Expression() == nil {

@@ -1,7 +1,7 @@
 package visitor
 
 import (
-	"github.com/AskaryanKarine/BMSTU-CC/cource/internal/parser"
+	"cc-course/internal/parser"
 )
 
 func (v *IRVisitor) VisitForLoopParts(ctx *parser.ForLoopPartsContext) interface{} {
