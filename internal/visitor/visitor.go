@@ -23,6 +23,7 @@ type IRVisitor struct {
 	currentBlock *ir.Block
 	blockStack   []*ir.Block
 	funcs        map[string]*ir.Func
+	runtime      map[string]value.Value
 }
 
 func NewIRVisitor() *IRVisitor {
@@ -38,9 +39,13 @@ func NewIRVisitor() *IRVisitor {
 		currentFunc:  nil,
 		currentScope: nil,
 		funcs:        make(map[string]*ir.Func),
+		runtime:      make(map[string]value.Value),
 	}
 
 	v.registerBuiltins()
+	v.declareRuntimeFuncs()
+	v.funcs["readString"] = v.defineReadString()
+	v.funcs["readInt"] = v.defineReadInt()
 
 	return v
 }

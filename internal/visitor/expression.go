@@ -444,16 +444,20 @@ func (v *IRVisitor) VisitPostfixExpression(ctx *parser.PostfixExpressionContext)
 					v.Errors = append(v.Errors, fmt.Errorf("attempt to call non-function value"))
 					return nil
 				}
-				var args []value.Value
 				if fn.Name() == "printf" {
+					var args []value.Value
 					if apc, ok := ap.(*parser.ArgumentPartContext); ok {
 						args = v.buildPrintArgs(apc)
 					}
+					currentVal = v.currentBlock.NewCall(fn, args...)
+				} else if fn.Name() == "readString" || fn.Name() == "readInt" {
+					currentVal = v.currentBlock.NewCall(fn)
 				} else {
+					var args []value.Value
 					argVal := v.Visit(ap)
 					args, _ = argVal.([]value.Value)
+					currentVal = v.currentBlock.NewCall(fn, args...)
 				}
-				currentVal = v.currentBlock.NewCall(fn, args...)
 			} else if sel.LBRACKET() != nil && sel.Expression() != nil {
 				sv, svOk := currentVal.(value.Value)
 				if !svOk {
@@ -777,7 +781,13 @@ func (v *IRVisitor) handleInterpolatedPrint(text string) []value.Value {
 			if vi, ok := v.currentScope.Get(p.raw); ok {
 				val := v.currentBlock.NewLoad(vi.Type, vi.LLVMValue)
 				formatArgs = append(formatArgs, val)
-				formatBuf.WriteString("%lld")
+				if _, ok := vi.Type.(*types.PointerType); ok {
+					formatBuf.WriteString("%s")
+				} else if _, ok := vi.Type.(*types.FloatType); ok {
+					formatBuf.WriteString("%f")
+				} else {
+					formatBuf.WriteString("%lld")
+				}
 			} else {
 				v.Errors = append(v.Errors, fmt.Errorf("undefined variable in string interpolation: %s", p.raw))
 				formatBuf.WriteString(p.raw)

@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -50,8 +49,6 @@ func Compiler(input, output string) error {
 	}
 
 	cmd := exec.Command("clang", llFilename, "-o", output+".exe")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("compile llvm to program: %w", err)
