@@ -151,17 +151,19 @@ func (v *ASTIRVisitor) astTypeToLLVM(t *ast.Type) types.Type {
 	if t == nil {
 		return types.I64
 	}
-	switch t.Name {
-	case "int":
+	switch {
+	case t.Name == "int":
 		return types.I64
-	case "double":
+	case t.Name == "double":
 		return types.Double
-	case "bool":
+	case t.Name == "bool":
 		return types.I1
-	case "String":
+	case t.Name == "String":
 		return types.NewPointer(types.I8)
-	case "void":
+	case t.Name == "void":
 		return types.Void
+	case strings.HasPrefix(t.Name, "List"):
+		return types.NewStruct(types.I64, types.NewPointer(types.I64))
 	default:
 		return types.I64
 	}

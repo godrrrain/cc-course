@@ -191,6 +191,9 @@ func (b *AstBuilder) visitTypeNotFunction(ctx parser.ITypeNotFunctionContext) *a
 
 func (b *AstBuilder) visitTypeNotVoidNotFunction(ctx parser.ITypeNotVoidNotFunctionContext) *ast.Type {
 	if tc, ok := ctx.(*parser.TypeNotVoidNotFunctionContext); ok && tc.TypeName() != nil {
+		if tc.TypeArguments() != nil {
+			return &ast.Type{Name: tc.GetText()}
+		}
 		name := tc.TypeName().GetText()
 		switch name {
 		case "int":

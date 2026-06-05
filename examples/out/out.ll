@@ -1,7 +1,12 @@
 target triple = "x86_64-pc-windows-msvc19.39.33523"
 
 @.str.literal.0 = constant [17 x i8] c"chcp 65001 > nul\00"
-@.str.literal.1 = constant [11 x i8] c"Sum: %lld\0A\00"
+@.str.literal.1 = constant [7 x i8] c"Array:\00"
+@.str.literal.2 = constant [4 x i8] c"%s\0A\00"
+@.str.literal.3 = constant [6 x i8] c"%lld\0A\00"
+@.str.literal.4 = constant [16 x i8] c"Reversed Array:\00"
+@.str.literal.5 = constant [4 x i8] c"%s\0A\00"
+@.str.literal.6 = constant [6 x i8] c"%lld\0A\00"
 
 declare i32 @printf(i8* %format, ...)
 
@@ -77,41 +82,118 @@ entry:
 	%14 = alloca { i64, i64* }
 	store { i64, i64* } %13, { i64, i64* }* %14
 	%15 = alloca i64
-	store i64 0, i64* %15
-	%16 = load { i64, i64* }, { i64, i64* }* %14
-	%17 = extractvalue { i64, i64* } %16, 0
-	%18 = extractvalue { i64, i64* } %16, 1
-	%19 = alloca i64
+	store i64 5, i64* %15
+	%16 = alloca i64
+	store i64 0, i64* %16
+	%17 = getelementptr [7 x i8], [7 x i8]* @.str.literal.1, i32 0, i32 0
+	%18 = getelementptr [4 x i8], [4 x i8]* @.str.literal.2, i32 0, i32 0
+	%19 = call i32 (i8*, ...) @printf(i8* %18, i8* %17)
 	%20 = alloca i64
 	store i64 0, i64* %20
-	br label %forin.cond.1
+	br label %for.cond.1
 
-forin.cond.1:
+for.cond.1:
 	%21 = load i64, i64* %20
-	%22 = icmp slt i64 %21, %17
-	br i1 %22, label %forin.body.2, label %forin.exit.4
+	%22 = load i64, i64* %15
+	%23 = icmp slt i64 %21, %22
+	br i1 %23, label %for.body.2, label %for.exit.4
 
-forin.body.2:
-	%23 = load i64, i64* %20
-	%24 = getelementptr i64, i64* %18, i64 %23
-	%25 = load i64, i64* %24
-	store i64 %25, i64* %19
-	%26 = load i64, i64* %15
-	%27 = load i64, i64* %19
-	%28 = add i64 %26, %27
-	store i64 %28, i64* %15
-	br label %forin.step.3
+for.body.2:
+	%24 = load { i64, i64* }, { i64, i64* }* %14
+	%25 = load i64, i64* %20
+	%26 = extractvalue { i64, i64* } %24, 1
+	%27 = getelementptr i64, i64* %26, i64 %25
+	%28 = load i64, i64* %27
+	%29 = getelementptr [6 x i8], [6 x i8]* @.str.literal.3, i32 0, i32 0
+	%30 = call i32 (i8*, ...) @printf(i8* %29, i64 %28)
+	br label %for.step.3
 
-forin.step.3:
-	%29 = load i64, i64* %20
-	%30 = add i64 1, %29
-	store i64 %30, i64* %20
-	br label %forin.cond.1
+for.step.3:
+	%31 = load i64, i64* %20
+	%32 = add i64 %31, 1
+	store i64 %32, i64* %20
+	br label %for.cond.1
 
-forin.exit.4:
-	%31 = load i64, i64* %15
-	%32 = getelementptr [11 x i8], [11 x i8]* @.str.literal.1, i32 0, i32 0
-	%33 = call i32 (i8*, ...) @printf(i8* %32, i64 %31)
-	%34 = load i32, i32* %0
-	ret i32 %34
+for.exit.4:
+	%33 = alloca i64
+	store i64 0, i64* %33
+	br label %for.cond.5
+
+for.cond.5:
+	%34 = load i64, i64* %33
+	%35 = load i64, i64* %15
+	%36 = sdiv i64 %35, 2
+	%37 = icmp slt i64 %34, %36
+	br i1 %37, label %for.body.6, label %for.exit.8
+
+for.body.6:
+	%38 = load { i64, i64* }, { i64, i64* }* %14
+	%39 = load i64, i64* %33
+	%40 = extractvalue { i64, i64* } %38, 1
+	%41 = getelementptr i64, i64* %40, i64 %39
+	%42 = load i64, i64* %41
+	store i64 %42, i64* %16
+	%43 = load { i64, i64* }, { i64, i64* }* %14
+	%44 = load i64, i64* %15
+	%45 = sub i64 %44, 1
+	%46 = load i64, i64* %33
+	%47 = sub i64 %45, %46
+	%48 = extractvalue { i64, i64* } %43, 1
+	%49 = getelementptr i64, i64* %48, i64 %47
+	%50 = load i64, i64* %49
+	%51 = load { i64, i64* }, { i64, i64* }* %14
+	%52 = extractvalue { i64, i64* } %51, 1
+	%53 = load i64, i64* %33
+	%54 = getelementptr i64, i64* %52, i64 %53
+	store i64 %50, i64* %54
+	%55 = load i64, i64* %16
+	%56 = load { i64, i64* }, { i64, i64* }* %14
+	%57 = extractvalue { i64, i64* } %56, 1
+	%58 = load i64, i64* %15
+	%59 = sub i64 %58, 1
+	%60 = load i64, i64* %33
+	%61 = sub i64 %59, %60
+	%62 = getelementptr i64, i64* %57, i64 %61
+	store i64 %55, i64* %62
+	br label %for.step.7
+
+for.step.7:
+	%63 = load i64, i64* %33
+	%64 = add i64 %63, 1
+	store i64 %64, i64* %33
+	br label %for.cond.5
+
+for.exit.8:
+	%65 = getelementptr [16 x i8], [16 x i8]* @.str.literal.4, i32 0, i32 0
+	%66 = getelementptr [4 x i8], [4 x i8]* @.str.literal.5, i32 0, i32 0
+	%67 = call i32 (i8*, ...) @printf(i8* %66, i8* %65)
+	%68 = alloca i64
+	store i64 0, i64* %68
+	br label %for.cond.9
+
+for.cond.9:
+	%69 = load i64, i64* %68
+	%70 = load i64, i64* %15
+	%71 = icmp slt i64 %69, %70
+	br i1 %71, label %for.body.10, label %for.exit.12
+
+for.body.10:
+	%72 = load { i64, i64* }, { i64, i64* }* %14
+	%73 = load i64, i64* %68
+	%74 = extractvalue { i64, i64* } %72, 1
+	%75 = getelementptr i64, i64* %74, i64 %73
+	%76 = load i64, i64* %75
+	%77 = getelementptr [6 x i8], [6 x i8]* @.str.literal.6, i32 0, i32 0
+	%78 = call i32 (i8*, ...) @printf(i8* %77, i64 %76)
+	br label %for.step.11
+
+for.step.11:
+	%79 = load i64, i64* %68
+	%80 = add i64 %79, 1
+	store i64 %80, i64* %68
+	br label %for.cond.9
+
+for.exit.12:
+	%81 = load i32, i32* %0
+	ret i32 %81
 }
