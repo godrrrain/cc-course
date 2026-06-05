@@ -30,26 +30,22 @@ func Compiler(input, output string) error {
 
 	tree := p.CompilationUnit()
 
-	// Save parse tree visualization (DOT + PNG)
 	err = ptree.SaveTreeToFile(tree, p, output+"_parse_tree")
 	if err != nil {
 		return fmt.Errorf("parse tree build error: %w", err)
 	}
 
-	// Build AST from parse tree
 	builder := visitor.NewAstBuilder()
 	prog := builder.Build(tree)
 	if len(builder.Errors) > 0 {
 		return fmt.Errorf("ast build errors: %v", builder.Errors)
 	}
 
-	// Save AST visualization (DOT + PNG)
 	err = ast.SaveASTToFile(prog, output+"_ast")
 	if err != nil {
 		return fmt.Errorf("ast save error: %w", err)
 	}
 
-	// Generate LLVM IR from AST
 	v := visitor.NewASTIRVisitor()
 	v.VisitProgram(prog)
 
