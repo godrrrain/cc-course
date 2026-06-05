@@ -6,8 +6,9 @@ import (
 
 	"github.com/antlr4-go/antlr/v4"
 
+	"cc-course/internal/ast"
 	"cc-course/internal/parser"
-	ast "cc-course/internal/tree"
+	ptree "cc-course/internal/tree"
 	"cc-course/internal/visitor"
 )
 
@@ -29,13 +30,28 @@ func Compiler(input, output string) error {
 
 	tree := p.CompilationUnit()
 
-	err = ast.SaveTreeToFile(tree, p, output)
+	// Save parse tree visualization (DOT + PNG)
+	err = ptree.SaveTreeToFile(tree, p, output+"_parse_tree")
 	if err != nil {
-		return fmt.Errorf("ast build error: %w", err)
+		return fmt.Errorf("parse tree build error: %w", err)
 	}
 
-	v := visitor.NewIRVisitor()
-	v.Visit(tree)
+	// Build AST from parse tree
+	builder := visitor.NewAstBuilder()
+	prog := builder.Build(tree)
+	if len(builder.Errors) > 0 {
+		return fmt.Errorf("ast build errors: %v", builder.Errors)
+	}
+
+	// Save AST visualization (DOT + PNG)
+	err = ast.SaveASTToFile(prog, output+"_ast")
+	if err != nil {
+		return fmt.Errorf("ast save error: %w", err)
+	}
+
+	// Generate LLVM IR from AST
+	v := visitor.NewASTIRVisitor()
+	v.VisitProgram(prog)
 
 	if len(v.Errors) > 0 {
 		return fmt.Errorf("compiler errors: %v", v.Errors)

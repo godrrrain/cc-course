@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	input  = flag.String("i", "examples/input.dart", "source .dart file")
-	output = flag.String("o", "examples/out", "executable program")
+	input  = flag.String("i", "examples/array.dart", "source .dart file")
+	output = flag.String("o", "examples/out/out", "executable program")
 )
 
 func main() {
